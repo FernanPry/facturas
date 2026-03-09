@@ -1,0 +1,159 @@
+import { useState, useEffect } from 'react';
+
+export default function Profile({ user, setUser, apiBase }) {
+    const [formData, setFormData] = useState(user || {});
+    const [status, setStatus] = useState('');
+
+    // Sincronizar formData cuando el usuario cargue
+    useEffect(() => {
+        if (user) {
+            setFormData(user);
+        }
+    }, [user]);
+
+    const handleChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setStatus('Guardando...');
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${apiBase}/profile`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(formData)
+            });
+            const updated = await res.json();
+            setUser(updated);
+            setStatus('✅ Cambios guardados');
+            setTimeout(() => setStatus(''), 3000);
+        } catch (error) {
+            console.error("Error saving profile:", error);
+            setStatus('❌ Error al guardar');
+        }
+    };
+
+    if (!user) return <div style={{ color: 'var(--text-muted)' }}>Cargando perfil...</div>;
+
+    return (
+        <div style={{ maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Sección: Datos Personales y de Empresa */}
+            <div className="card">
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--primary)' }}>Datos de Facturación</h3>
+                <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        <div className="flex flex-col gap-2">
+                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Nombre</label>
+                            <input
+                                name="name"
+                                value={formData.name || ''}
+                                onChange={handleChange}
+                                className="input-minimal"
+                                placeholder="Tu nombre"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Apellidos</label>
+                            <input
+                                name="lastname"
+                                value={formData.lastname || ''}
+                                onChange={handleChange}
+                                className="input-minimal"
+                                placeholder="Tus apellidos"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Nombre de la Empresa</label>
+                            <input
+                                name="company"
+                                value={formData.company || ''}
+                                onChange={handleChange}
+                                className="input-minimal"
+                                placeholder="Ejem: Innova S.L."
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Sector Profesional</label>
+                            <input
+                                name="sector"
+                                value={formData.sector || ''}
+                                onChange={handleChange}
+                                className="input-minimal"
+                                placeholder="Ejem: Hostelería, IT..."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                        <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2rem' }}>
+                            Guardar Datos de Perfil
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            {/* Sección: Canales de Ingesta y Configuración */}
+            <div className="card">
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--primary)' }}>Configuración de Ingesta</h3>
+                <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        <div className="flex flex-col gap-2">
+                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Email para Ingesta Directa</label>
+                            <input
+                                name="email"
+                                value={formData.email || ''}
+                                onChange={handleChange}
+                                className="input-minimal"
+                                placeholder="facturas@tuempresa.com"
+                            />
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>* Las facturas enviadas aquí se procesarán automáticamente</p>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Teléfono Vinculado (Telegram)</label>
+                            <input
+                                name="phone"
+                                value={formData.phone || ''}
+                                placeholder="+34..."
+                                onChange={handleChange}
+                                className="input-minimal"
+                            />
+                            <p style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 600, marginTop: '-0.25rem' }}>
+                                IMPORTANTE: Incluye prefijo internacional (ej: +34 para España)
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-4" style={{ padding: '1.25rem', background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
+                        <input
+                            type="checkbox"
+                            name="r_eq"
+                            checked={formData.r_eq || false}
+                            onChange={handleChange}
+                            style={{ width: '1.25rem', height: '1.25rem', accentColor: 'var(--primary)' }}
+                        />
+                        <div>
+                            <p style={{ fontWeight: 600, color: 'var(--text-main)' }}>Habilitar Recargo de Equivalencia (R.EQ)</p>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Actívalo si estás en este régimen para detectar automáticamente el recargo en tus facturas.</p>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                        <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{status}</span>
+                        <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2rem' }}>
+                            Actualizar Configuración
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
