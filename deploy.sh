@@ -14,7 +14,7 @@ echo "📦 Instalando dependencias del Backend..."
 cd backend
 npm install
 echo "🔄 Reiniciando Backend con PM2..."
-pm2 restart backend || pm2 start server.js --name backend
+pm2 restart facturas-backend || pm2 start server.js --name facturas-backend
 cd ..
 
 # 3. Preparar Frontend
