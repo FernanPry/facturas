@@ -9,6 +9,12 @@ echo "🚀 Iniciando despliegue en Raspberry Pi..."
 echo "📥 Descargando últimos cambios..."
 git pull origin main
 
+# 1.5 Verificar herramientas necesarias
+if ! command -v pm2 &> /dev/null; then
+    echo "⚠️ PM2 no encontrado. Intentando instalar..."
+    npm install -g pm2
+fi
+
 # 2. Preparar Backend
 echo "📦 Instalando dependencias del Backend..."
 cd backend

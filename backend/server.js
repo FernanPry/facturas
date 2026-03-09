@@ -23,11 +23,11 @@ app.use(morgan("dev"));
 app.use(express.static(path.join(__dirname, "../frontend/dist")));
 
 /**
- * Middleware de Autenticación JWT
+ * Middleware de Autenticación JWT - SOLO PARA RUTAS /api
  */
-app.use(async (req, res, next) => {
-    // Permitir rutas de login/registro y landing sin token
-    if (req.url.startsWith("/api/auth") || req.url === "/") {
+app.use("/api", async (req, res, next) => {
+    // Permitir rutas de login/registro sin token
+    if (req.url.startsWith("/auth")) {
         return next();
     }
 
@@ -61,10 +61,11 @@ app.post("/api/auth/register", async (req, res) => {
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
         res.json({ token, user });
     } catch (error) {
+        console.error("[ERROR] Registration failed:", error);
         if (error.code === '23505') { // Unique violation
             return res.status(400).json({ error: "El email ya está registrado" });
         }
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: "Error interno en el servidor al registrar" });
     }
 });
 
@@ -184,7 +185,7 @@ app.put("/api/profile", async (req, res) => {
 });
 
 // Iniciar Servicios
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log("¡Flujo de despliegue funcionando!")
     console.log(`Servidor ejecutándose en el puerto ${PORT}`);
 

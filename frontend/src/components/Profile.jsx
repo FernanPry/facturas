@@ -108,17 +108,41 @@ export default function Profile({ user, setUser, apiBase }) {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                         <div className="flex flex-col gap-2">
                             <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Email para Ingesta Directa</label>
-                            <input
-                                name="email"
-                                value={formData.email || ''}
-                                onChange={handleChange}
-                                className="input-minimal"
-                                placeholder="facturas@tuempresa.com"
-                            />
+                            <div style={{
+                                padding: '0.75rem',
+                                background: 'var(--bg-secondary)',
+                                borderRadius: '0.5rem',
+                                border: '1px solid var(--border)',
+                                fontSize: '0.9rem',
+                                fontWeight: 500,
+                                color: 'var(--primary)'
+                            }}>
+                                vax.grupo@gmail.com
+                            </div>
                             <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>* Las facturas enviadas aquí se procesarán automáticamente</p>
                         </div>
                         <div className="flex flex-col gap-2">
-                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Teléfono Vinculado (Telegram)</label>
+                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Telegram Bot</label>
+                            <div style={{
+                                padding: '0.75rem',
+                                background: 'var(--bg-secondary)',
+                                borderRadius: '0.5rem',
+                                border: '1px solid var(--border)',
+                                fontSize: '0.9rem',
+                                fontWeight: 600,
+                                color: '#0088cc'
+                            }}>
+                                @cajon_facturas_bot
+                            </div>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                Vincula tu cuenta enviando tu contacto al bot.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        <div className="flex flex-col gap-2">
+                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Teléfono Vinculado</label>
                             <input
                                 name="phone"
                                 value={formData.phone || ''}
@@ -126,8 +150,8 @@ export default function Profile({ user, setUser, apiBase }) {
                                 onChange={handleChange}
                                 className="input-minimal"
                             />
-                            <p style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 600, marginTop: '-0.25rem' }}>
-                                IMPORTANTE: Incluye prefijo internacional (ej: +34 para España)
+                            <p style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 600 }}>
+                                Necesario para vincular el bot de Telegram.
                             </p>
                         </div>
                     </div>
