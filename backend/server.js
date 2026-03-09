@@ -185,6 +185,7 @@ app.put("/api/profile", async (req, res) => {
 
 // Iniciar Servicios
 app.listen(PORT, () => {
+    console.log("¡Flujo de despliegue funcionando!")
     console.log(`Servidor ejecutándose en el puerto ${PORT}`);
 
     // Iniciar Bots y Workers
