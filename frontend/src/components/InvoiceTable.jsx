@@ -1,4 +1,14 @@
-export default function InvoiceTable({ invoices, user }) {
+export default function InvoiceTable({
+    invoices,
+    filteredInvoices,
+    user,
+    filterTerm,
+    setFilterTerm,
+    startDate,
+    setStartDate,
+    endDate,
+    setEndDate
+}) {
     const handleDelete = async (id, emisor) => {
         if (!window.confirm(`¿Estás seguro de que quieres eliminar la factura de "${emisor}"? Esta acción no se puede deshacer.`)) {
             return;
@@ -23,9 +33,11 @@ export default function InvoiceTable({ invoices, user }) {
     };
 
     const exportToCSV = () => {
-        if (invoices.length === 0) return;
+        const dataToExport = filteredInvoices;
+        if (dataToExport.length === 0) return;
+
         const headers = ["Emisor", "Fecha", "Referencia", "Base", "IVA", "R.EQ", "Total", "Canal"];
-        const rows = invoices.map(inv => [
+        const rows = dataToExport.map(inv => [
             inv.emisor,
             inv.invoice_date,
             inv.reference,
@@ -47,13 +59,78 @@ export default function InvoiceTable({ invoices, user }) {
         document.body.removeChild(link);
     };
 
+    const clearFilters = () => {
+        setFilterTerm('');
+        setStartDate('');
+        setEndDate('');
+    };
+
+    const hasFilters = filterTerm || startDate || endDate;
+
     return (
         <div className="card" style={{ marginTop: '2rem' }}>
-            <div className="flex justify-between items-center mb-6">
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Historial de Facturas</h3>
-                <button className="btn btn-secondary" onClick={exportToCSV}>
-                    📥 Exportar CSV
-                </button>
+            <div className="flex flex-col gap-6 mb-8">
+                <div className="flex justify-between items-center">
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Historial de Facturas</h3>
+                    <button className="btn btn-secondary" onClick={exportToCSV} disabled={filteredInvoices.length === 0}>
+                        📥 Exportar CSV {hasFilters && `(${filteredInvoices.length})`}
+                    </button>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-4 p-4" style={{ background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
+                    <div style={{ flex: '1 1 250px', position: 'relative' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>BUSCAR EMISOR</label>
+                        <div style={{ position: 'relative' }}>
+                            <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
+                            <input
+                                type="text"
+                                placeholder="Ejem: Amazon, Repsol..."
+                                className="input-minimal"
+                                value={filterTerm}
+                                onChange={(e) => setFilterTerm(e.target.value)}
+                                style={{ width: '100%', paddingLeft: '2.5rem' }}
+                            />
+                        </div>
+                    </div>
+
+                    <div style={{ flex: '0 0 160px' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>DESDE</label>
+                        <input
+                            type="date"
+                            className="input-minimal"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            style={{ width: '100%' }}
+                        />
+                    </div>
+
+                    <div style={{ flex: '0 0 160px' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>HASTA</label>
+                        <input
+                            type="date"
+                            className="input-minimal"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            style={{ width: '100%' }}
+                        />
+                    </div>
+
+                    {hasFilters && (
+                        <button
+                            onClick={clearFilters}
+                            className="btn btn-secondary"
+                            style={{
+                                padding: '0.6rem 1.25rem',
+                                border: '1px solid var(--primary)',
+                                color: 'var(--primary)',
+                                background: 'transparent',
+                                height: 'fit-content'
+                            }}
+                        >
+                            Quitar filtros
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="table-container" style={{ padding: '0 0.5rem' }}>
@@ -72,7 +149,7 @@ export default function InvoiceTable({ invoices, user }) {
                         </tr>
                     </thead>
                     <tbody>
-                        {invoices.length > 0 ? invoices.map((inv) => {
+                        {filteredInvoices.length > 0 ? filteredInvoices.map((inv) => {
                             const missingREq = user?.r_eq && (!inv.r_eq || parseFloat(inv.r_eq) <= 0);
                             return (
                                 <tr key={inv.id} style={missingREq ? { background: '#fee2e2' } : null}>
@@ -126,7 +203,7 @@ export default function InvoiceTable({ invoices, user }) {
                         }) : (
                             <tr>
                                 <td colSpan="9" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                                    Aún no has subido ninguna factura.
+                                    {hasFilters ? 'No se encontraron facturas para los filtros aplicados.' : 'Aún no has subido ninguna factura.'}
                                 </td>
                             </tr>
                         )}

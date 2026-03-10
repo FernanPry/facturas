@@ -21,7 +21,7 @@ const Sidebar = ({ activeTab, onTabChange, onLogout, user }) => {
                 <div className="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-100">
                     <FileText size={20} color="#fff" />
                 </div>
-                <span className="font-bold tracking-tighter text-xl text-slate-900">Linear</span>
+                <span className="font-bold tracking-tighter text-xl text-slate-900">Cajón AI</span>
             </div>
 
             <div className="flex-1 space-y-1">

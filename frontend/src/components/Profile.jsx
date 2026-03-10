@@ -45,11 +45,11 @@ export default function Profile({ user, setUser, apiBase }) {
     if (!user) return <div style={{ color: 'var(--text-muted)' }}>Cargando perfil...</div>;
 
     return (
-        <div style={{ maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {/* Sección: Datos Personales y de Empresa */}
-            <div className="card">
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--primary)' }}>Datos de Facturación</h3>
-                <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <div style={{ maxWidth: '800px' }}>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-8">
+                {/* Sección: Datos Personales y de Empresa */}
+                <div className="card">
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--primary)' }}>Datos de Facturación</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                         <div className="flex flex-col gap-2">
                             <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Nombre</label>
@@ -92,92 +92,87 @@ export default function Profile({ user, setUser, apiBase }) {
                             />
                         </div>
                     </div>
+                </div>
 
-                    <div className="flex justify-end">
-                        <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2rem' }}>
-                            Guardar Datos de Perfil
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            {/* Sección: Canales de Ingesta y Configuración */}
-            <div className="card">
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--primary)' }}>Configuración de Ingesta</h3>
-                <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                        <div className="flex flex-col gap-2">
-                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Email para Ingesta Directa</label>
-                            <div style={{
-                                padding: '0.75rem',
-                                background: 'var(--bg-secondary)',
-                                borderRadius: '0.5rem',
-                                border: '1px solid var(--border)',
-                                fontSize: '0.9rem',
-                                fontWeight: 500,
-                                color: 'var(--primary)'
-                            }}>
-                                vax.grupo@gmail.com
+                {/* Sección: Canales de Ingesta y Configuración */}
+                <div className="card">
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--primary)' }}>Configuración de Ingesta</h3>
+                    <div className="flex flex-col gap-6">
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                            <div className="flex flex-col gap-2">
+                                <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Email para Ingesta Directa</label>
+                                <div style={{
+                                    padding: '0.75rem',
+                                    background: 'var(--bg-secondary)',
+                                    borderRadius: '0.5rem',
+                                    border: '1px solid var(--border)',
+                                    fontSize: '0.9rem',
+                                    fontWeight: 500,
+                                    color: 'var(--primary)'
+                                }}>
+                                    vax.grupo@gmail.com
+                                </div>
+                                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>* Las facturas enviadas aquí se procesarán automáticamente</p>
                             </div>
-                            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>* Las facturas enviadas aquí se procesarán automáticamente</p>
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Telegram Bot</label>
-                            <div style={{
-                                padding: '0.75rem',
-                                background: 'var(--bg-secondary)',
-                                borderRadius: '0.5rem',
-                                border: '1px solid var(--border)',
-                                fontSize: '0.9rem',
-                                fontWeight: 600,
-                                color: '#0088cc'
-                            }}>
-                                @cajon_facturas_bot
+                            <div className="flex flex-col gap-2">
+                                <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Telegram Bot</label>
+                                <div style={{
+                                    padding: '0.75rem',
+                                    background: 'var(--bg-secondary)',
+                                    borderRadius: '0.5rem',
+                                    border: '1px solid var(--border)',
+                                    fontSize: '0.9rem',
+                                    fontWeight: 600,
+                                    color: '#0088cc'
+                                }}>
+                                    @cajon_facturas_bot
+                                </div>
+                                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                    Vincula tu cuenta enviando tu contacto al bot.
+                                </p>
                             </div>
-                            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                Vincula tu cuenta enviando tu contacto al bot.
-                            </p>
                         </div>
-                    </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                        <div className="flex flex-col gap-2">
-                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Teléfono Vinculado</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                            <div className="flex flex-col gap-2">
+                                <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Teléfono Vinculado</label>
+                                <input
+                                    name="phone"
+                                    value={formData.phone || ''}
+                                    placeholder="+34..."
+                                    onChange={handleChange}
+                                    className="input-minimal"
+                                />
+                                <p style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 600 }}>
+                                    Necesario para vincular el bot de Telegram.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-4" style={{ padding: '1.25rem', background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
                             <input
-                                name="phone"
-                                value={formData.phone || ''}
-                                placeholder="+34..."
+                                type="checkbox"
+                                id="r_eq_checkbox"
+                                name="r_eq"
+                                checked={formData.r_eq || false}
                                 onChange={handleChange}
-                                className="input-minimal"
+                                style={{ width: '1.25rem', height: '1.25rem', accentColor: 'var(--primary)' }}
                             />
-                            <p style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 600 }}>
-                                Necesario para vincular el bot de Telegram.
-                            </p>
+                            <label htmlFor="r_eq_checkbox" style={{ cursor: 'pointer' }}>
+                                <p style={{ fontWeight: 600, color: 'var(--text-main)' }}>Habilitar Recargo de Equivalencia (R.EQ)</p>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Actívalo si estás en este régimen para detectar automáticamente el recargo en tus facturas.</p>
+                            </label>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4" style={{ padding: '1.25rem', background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
-                        <input
-                            type="checkbox"
-                            name="r_eq"
-                            checked={formData.r_eq || false}
-                            onChange={handleChange}
-                            style={{ width: '1.25rem', height: '1.25rem', accentColor: 'var(--primary)' }}
-                        />
-                        <div>
-                            <p style={{ fontWeight: 600, color: 'var(--text-main)' }}>Habilitar Recargo de Equivalencia (R.EQ)</p>
-                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Actívalo si estás en este régimen para detectar automáticamente el recargo en tus facturas.</p>
-                        </div>
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                        <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{status}</span>
-                        <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2rem' }}>
-                            Actualizar Configuración
+                    <div className="flex justify-between items-center mt-8 pt-6" style={{ borderTop: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 500, color: status.includes('✅') ? 'var(--primary)' : 'var(--text-main)' }}>{status}</span>
+                        <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2.5rem' }}>
+                            Guardar Cambios Configuración
                         </button>
                     </div>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
     );
 }

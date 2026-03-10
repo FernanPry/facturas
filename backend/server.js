@@ -54,7 +54,7 @@ app.post("/api/auth/register", async (req, res) => {
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
         const { rows } = await db.query(
-            "INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email",
+            "INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, lastname, company, sector, phone, email, r_eq",
             [name, email, hashedPassword]
         );
         const user = rows[0];
@@ -78,7 +78,10 @@ app.post("/api/auth/login", async (req, res) => {
             return res.status(401).json({ error: "Credenciales inválidas" });
         }
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
-        res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+        // Devolver usuario completo sin el hash
+        const userClean = { ...user };
+        delete userClean.password_hash;
+        res.json({ token, user: userClean });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -177,9 +180,12 @@ app.put("/api/profile", async (req, res) => {
 
         const { rows } = await db.query(query, params);
         const user = rows[0];
-        delete user.password_hash; // Seguridad: no devolver el hash al cliente
+        if (user) {
+            delete user.password_hash;
+        }
         res.json(user);
     } catch (error) {
+        console.error("Error updating profile:", error);
         res.status(500).json({ error: error.message });
     }
 });

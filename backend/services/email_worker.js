@@ -161,22 +161,39 @@ class EmailWorker {
             const duplicateRef = await db.checkDuplicateReference(user.id, result.referencia);
             const duplicateAmount = await db.checkDuplicateAmountDate(user.id, result.total, result.fecha_emision);
 
+            let alertMessage = "";
+            let emailSubject = "✅ Factura procesada correctamente";
+
             if (duplicateRef) {
                 return await this.sendAlert(user.email, "⚠️ Factura Duplicada",
                     `Hola ${user.name},\n\nLa factura con referencia "${result.referencia}" ya existe en el sistema. NO se ha guardado de nuevo para evitar duplicidad.`);
             } else if (duplicateAmount) {
-                await this.sendAlert(user.email, "⚠️ Posible Factura Duplicada",
-                    `Hola ${user.name},\n\nHemos detectado una factura por importe de ${result.total}€ que coincide con una existente. Por favor, verifícala.`);
+                alertMessage += `\n⚠️ AVISO: Se ha detectado otra factura con el mismo importe (${result.total}€) y fecha (${result.fecha_emision}). Revisa si es un duplicado.`;
+                emailSubject = "⚠️ Aviso en factura procesada";
             }
 
             // Alarma R.EQ
             if (user.r_eq && (!result.r_eq || parseFloat(result.r_eq) <= 0)) {
-                await this.sendAlert(user.email, "🚨 ALARMA: Factura sin Recargo de Equivalencia",
-                    `Hola ${user.name},\n\nTu perfil tiene activado el Recargo de Equivalencia, pero la factura de "${result.emisor}" recibida recién NO contiene este concepto. Por favor, revísala.`);
+                alertMessage += `\n⚠️ ¡ALARMA!: No se ha detectado Recargo de Equivalencia (R.EQ.) en esta factura.`;
+                emailSubject = "🚨 Alarma en factura procesada";
             }
 
             // Guardar en DB
             await db.saveInvoice(user.id, result, 'email', result);
+
+            // Construir mensaje de éxito formateado
+            const feedback = `✅ Datos extraídos y guardados:\n\n` +
+                `📅 Fecha: ${result.fecha_emision}\n` +
+                `👤 Emisor: ${result.emisor}\n` +
+                `🔢 Factura: ${result.referencia}\n` +
+                `💰 Subtotal: ${result.subtotal}\n` +
+                `📑 IVA: ${result.iva}\n` +
+                `♻️ Recargo Eq: ${result.r_eq || 0.0}\n` +
+                `🧾 Total Impuestos: ${result.total_impuestos}\n` +
+                `💵 TOTAL: ${result.total}\n` +
+                `${alertMessage}`;
+
+            await this.sendAlert(user.email, emailSubject, feedback);
 
             console.log(`✅ Factura por Email de "${result.emisor}" procesada para ${user.email}`);
 

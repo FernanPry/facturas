@@ -17,9 +17,34 @@ function App() {
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
     const token = localStorage.getItem('token');
-    if (savedUser && token) {
-      setUser(JSON.parse(savedUser));
-      setIsAuthenticated(true);
+
+    if (token) {
+      if (savedUser) {
+        setUser(JSON.parse(savedUser));
+        setIsAuthenticated(true);
+      }
+
+      // Refrescar datos del perfil completos desde el servidor
+      fetch(`${API_BASE}/profile`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+        .then(res => {
+          if (res.ok) return res.json();
+          throw new Error('No autorizado');
+        })
+        .then(fullUser => {
+          setUser(fullUser);
+          localStorage.setItem('user', JSON.stringify(fullUser));
+          setIsAuthenticated(true);
+        })
+        .catch(err => {
+          console.error("Error fetching profile:", err);
+          if (err.message === 'No autorizado') {
+            handleLogout();
+          }
+        });
     }
   }, []);
 
@@ -56,7 +81,7 @@ function App() {
                   <header className="mb-6 flex justify-between items-center">
                     <div>
                       <h1 className="gradient-text" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
-                        {activeTab === 'dashboard' ? 'Mi Cajón de Facturas' :
+                        {activeTab === 'dashboard' ? 'Facturas' :
                           activeTab === 'profile' ? 'Configuración de Perfil' : 'Ajustes de Cuenta'}
                       </h1>
                       <p style={{ color: 'var(--text-muted)' }}>

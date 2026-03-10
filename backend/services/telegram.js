@@ -131,7 +131,7 @@ class TelegramService {
         }
 
         const fileUrl = await this.bot.telegram.getFileLink(doc.file_id);
-        await ctx.reply("Procesando PDF con Gemini 1.5 Flash...");
+        await ctx.reply("Procesando PDF por Cajón IA...");
 
         return this.processFiles(ctx, user, [fileUrl.href], "application/pdf");
     }
@@ -182,21 +182,34 @@ class TelegramService {
             const duplicateRef = await db.checkDuplicateReference(user.id, result.referencia);
             const duplicateAmount = await db.checkDuplicateAmountDate(user.id, result.total, result.fecha_emision);
 
+            let alertMessage = "";
             if (duplicateRef) {
-                return await ctx.reply(`⚠️ ALERTA DE DUPLICADO: La factura con referencia "${result.referencia}" ya existe. NO se ha vuelto a guardar.`);
+                return await ctx.reply(`⚠️ ¡ALARMA!: La factura con referencia "${result.referencia}" ya existe. NO se ha vuelto a guardar.`);
             } else if (duplicateAmount) {
-                await ctx.reply(`⚠️ AVISO: Se ha detectado otra factura con el mismo importe (${result.total}€) y fecha (${result.fecha_emision}). Revisa si es un duplicado.`);
+                alertMessage += `\n⚠️ AVISO: Se ha detectado otra factura con el mismo importe (${result.total}€) y fecha (${result.fecha_emision}). Revisa si es un duplicado.`;
             }
 
             // Alarma de Recargo de Equivalencia (R.EQ)
             if (user.r_eq && (!result.r_eq || parseFloat(result.r_eq) <= 0)) {
-                await ctx.reply(`🚨 ALARMA R.EQ: Tu perfil tiene activado el Recargo de Equivalencia, pero esta factura NO parece incluirlo. Por favor, revísala.`);
+                alertMessage += `\n⚠️ ¡ALARMA!: No se ha detectado Recargo de Equivalencia (R.EQ.) en esta factura.`;
             }
 
             // Guardar en DB
-            const invoice = await db.saveInvoice(user.id, result, 'telegram', result);
+            await db.saveInvoice(user.id, result, 'telegram', result);
 
-            await ctx.reply(`✅ Factura de "${result.emisor}" por un total de ${result.total}€ archivada correctamente.`);
+            // Construir mensaje de éxito formateado
+            const feedback = `✅ Datos extraídos y guardados:\n\n` +
+                `📅 Fecha: ${result.fecha_emision}\n` +
+                `👤 Emisor: ${result.emisor}\n` +
+                `🔢 Factura: ${result.referencia}\n` +
+                `💰 Subtotal: ${result.subtotal}\n` +
+                `📑 IVA: ${result.iva}\n` +
+                `♻️ Recargo Eq: ${result.r_eq || 0.0}\n` +
+                `🧾 Total Impuestos: ${result.total_impuestos}\n` +
+                `💵 TOTAL: ${result.total}\n` +
+                `${alertMessage}`;
+
+            await ctx.reply(feedback);
         } catch (error) {
             console.error("Error procesando factura de telegram:", error);
             await ctx.reply("Hubo un error procesando tu factura. Por favor, inténtalo de nuevo más tarde.");
