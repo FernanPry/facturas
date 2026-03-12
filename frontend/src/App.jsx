@@ -7,6 +7,7 @@ import LandingPage from './pages/LandingPage';
 import Auth from './pages/Auth';
 import ProtectedRoute from './components/ProtectedRoute';
 import Settings from './components/Settings';
+import ManualUpload from './components/ManualUpload';
 import { API_BASE } from './config';
 
 function App() {
@@ -82,14 +83,17 @@ function App() {
                     <div>
                       <h1 className="gradient-text" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
                         {activeTab === 'dashboard' ? 'Facturas' :
-                          activeTab === 'profile' ? 'Configuración de Perfil' : 'Ajustes de Cuenta'}
+                          activeTab === 'profile' ? 'Configuración de Perfil' : 
+                          activeTab === 'upload' ? 'Subir Facturas' : 'Ajustes de Cuenta'}
                       </h1>
                       <p style={{ color: 'var(--text-muted)' }}>
                         {activeTab === 'dashboard'
                           ? 'Gestiona y visualiza tus facturas procesadas por IA'
                           : activeTab === 'profile'
                             ? 'Personaliza tus datos de facturación y canales de ingesta'
-                            : 'Gestiona tus credenciales de acceso y seguridad'}
+                            : activeTab === 'upload'
+                              ? 'Carga manualmente una factura desde tu PC para procesarla por IA'
+                              : 'Gestiona tus credenciales de acceso y seguridad'}
                       </p>
                     </div>
                     <div className="user-profile-badge">
@@ -103,6 +107,9 @@ function App() {
                   )}
                   {activeTab === 'settings' && (
                     <Settings user={user} setUser={setUser} apiBase={API_BASE} />
+                  )}
+                  {activeTab === 'upload' && (
+                    <ManualUpload apiBase={API_BASE} />
                   )}
                 </main>
               </div>

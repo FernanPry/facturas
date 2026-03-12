@@ -18,7 +18,7 @@ const LandingPage = () => {
                         <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
                             <FileText size={22} color="#fff" />
                         </div>
-                        <span className="text-xl font-bold tracking-tighter">Cajón AI</span>
+                        <span className="text-xl font-bold tracking-tighter">Cajón IA</span>
                     </div>
 
                     <div className="flex items-center gap-6">
@@ -55,7 +55,7 @@ const LandingPage = () => {
                         <div className="relative bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden aspect-video flex items-center justify-center">
                             <img
                                 src="/workflow.png"
-                                alt="Flujo de Trabajo Cajón AI"
+                                alt="Flujo de Trabajo Cajón IA"
                                 className="w-full h-full object-cover"
                             />
                         </div>
@@ -114,7 +114,7 @@ const LandingPage = () => {
                 <div className="container flex flex-col md:flex-row justify-between items-center gap-8">
                     <div className="flex items-center gap-2 opacity-50">
                         <FileText size={16} className="text-indigo-600" />
-                        <span className="text-sm font-semibold text-slate-900">Cajón AI</span>
+                        <span className="text-sm font-semibold text-slate-900">Cajón IA</span>
                     </div>
                     <div className="flex gap-8 text-xs text-muted">
                         <a href="#" className="hover:text-indigo-600 transition-colors">Twitter</a>
@@ -122,7 +122,7 @@ const LandingPage = () => {
                         <a href="#" className="hover:text-indigo-600 transition-colors">Privacy</a>
                     </div>
                     <p className="text-xs text-muted">
-                        &copy; 2026 Cajón AI, Inc.
+                        &copy; 2026 Cajón IA, Inc.
                     </p>
                 </div>
             </footer>

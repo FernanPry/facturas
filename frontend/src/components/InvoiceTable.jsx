@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+
 export default function InvoiceTable({
     invoices,
     filteredInvoices,
@@ -7,8 +9,30 @@ export default function InvoiceTable({
     startDate,
     setStartDate,
     endDate,
-    setEndDate
+    setEndDate,
+    reqFilter,
+    setReqFilter,
+    apiBase
 }) {
+    // Paginación
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(20);
+
+    // Resetear a la primera página cuando cambian los filtros o el tamaño de página
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filteredInvoices.length, rowsPerPage]);
+
+    // Cálculo de facturas paginadas
+    const totalPages = Math.ceil(filteredInvoices.length / rowsPerPage);
+    const paginatedInvoices = filteredInvoices.slice(
+        (currentPage - 1) * rowsPerPage,
+        currentPage * rowsPerPage
+    );
+
+    const startIndex = (currentPage - 1) * rowsPerPage + 1;
+    const endIndex = Math.min(currentPage * rowsPerPage, filteredInvoices.length);
+
     const handleDelete = async (id, emisor) => {
         if (!window.confirm(`¿Estás seguro de que quieres eliminar la factura de "${emisor}"? Esta acción no se puede deshacer.`)) {
             return;
@@ -63,9 +87,10 @@ export default function InvoiceTable({
         setFilterTerm('');
         setStartDate('');
         setEndDate('');
+        setReqFilter('all');
     };
 
-    const hasFilters = filterTerm || startDate || endDate;
+    const hasFilters = filterTerm || startDate || endDate || reqFilter !== 'all';
 
     return (
         <div className="card" style={{ marginTop: '2rem' }}>
@@ -91,6 +116,20 @@ export default function InvoiceTable({
                                 style={{ width: '100%', paddingLeft: '2.5rem' }}
                             />
                         </div>
+                    </div>
+
+                    <div style={{ flex: '0 0 160px' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>RECARGO EQ.</label>
+                        <select
+                            className="input-minimal"
+                            value={reqFilter}
+                            onChange={(e) => setReqFilter(e.target.value)}
+                            style={{ width: '100%', cursor: 'pointer' }}
+                        >
+                            <option value="all">Todas</option>
+                            <option value="with">Con R. EQ</option>
+                            <option value="without">Sin R. EQ</option>
+                        </select>
                     </div>
 
                     <div style={{ flex: '0 0 160px' }}>
@@ -139,7 +178,7 @@ export default function InvoiceTable({
                         <tr>
                             <th style={{ width: '22%' }}>Emisor</th>
                             <th style={{ width: '12%' }}>Fecha</th>
-                            <th style={{ width: '15%' }}>Referencia</th>
+                            <th style={{ width: '15%' }}>Nº Factura</th>
                             <th style={{ width: '10%' }}>Base</th>
                             <th style={{ width: '10%' }}>IVA</th>
                             <th style={{ width: '10%' }}>R.EQ</th>
@@ -149,7 +188,7 @@ export default function InvoiceTable({
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredInvoices.length > 0 ? filteredInvoices.map((inv) => {
+                        {paginatedInvoices.length > 0 ? paginatedInvoices.map((inv) => {
                             const missingREq = user?.r_eq && (!inv.r_eq || parseFloat(inv.r_eq) <= 0);
                             return (
                                 <tr key={inv.id} style={missingREq ? { background: '#fee2e2' } : null}>
@@ -181,22 +220,77 @@ export default function InvoiceTable({
                                         </span>
                                     </td>
                                     <td style={{ textAlign: 'center' }}>
-                                        <button
-                                            onClick={() => handleDelete(inv.id, inv.emisor)}
-                                            style={{
-                                                background: 'transparent',
-                                                border: 'none',
-                                                cursor: 'pointer',
-                                                fontSize: '1rem',
-                                                opacity: 0.6,
-                                                transition: 'opacity 0.2s'
-                                            }}
-                                            title="Eliminar factura"
-                                            onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
-                                            onMouseOut={(e) => e.currentTarget.style.opacity = '0.6'}
-                                        >
-                                            🗑️
-                                        </button>
+                                        <div className="flex gap-3 justify-center items-center">
+                                            {inv.file_path && (
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            const token = localStorage.getItem('token');
+                                                            const response = await fetch(`${apiBase}/invoices/download/${inv.id}`, {
+                                                                headers: { 'Authorization': `Bearer ${token}` }
+                                                            });
+                                                            if (!response.ok) throw new Error('Error al descargar');
+                                                            
+                                                            const blob = await response.blob();
+                                                            const url = window.URL.createObjectURL(blob);
+                                                            const a = document.createElement('a');
+                                                            a.href = url;
+                                                            a.download = `${inv.emisor}-${inv.reference || inv.id}.pdf`;
+                                                            document.body.appendChild(a);
+                                                            a.click();
+                                                            a.remove();
+                                                            window.URL.revokeObjectURL(url);
+                                                        } catch (err) {
+                                                            alert("No se pudo descargar el archivo.");
+                                                            console.error(err);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        border: 'none',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: 600,
+                                                        color: 'var(--primary)',
+                                                        background: 'var(--primary-light)',
+                                                        padding: '0.2rem 0.5rem',
+                                                        borderRadius: '6px',
+                                                        transition: 'all 0.2s',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                    title="Descargar factura original"
+                                                    onMouseOver={(e) => {
+                                                        e.currentTarget.style.transform = 'translateY(-1px)';
+                                                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+                                                    }}
+                                                    onMouseOut={(e) => {
+                                                        e.currentTarget.style.transform = 'translateY(0)';
+                                                        e.currentTarget.style.boxShadow = 'none';
+                                                    }}
+                                                >
+                                                    <span>📥</span>
+                                                    <span>Descargar</span>
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleDelete(inv.id, inv.emisor)}
+                                                style={{
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    fontSize: '1rem',
+                                                    opacity: 0.6,
+                                                    transition: 'opacity 0.2s',
+                                                    padding: '4px'
+                                                }}
+                                                title="Eliminar factura"
+                                                onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
+                                                onMouseOut={(e) => e.currentTarget.style.opacity = '0.6'}
+                                            >
+                                                🗑️
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             );
@@ -210,6 +304,87 @@ export default function InvoiceTable({
                     </tbody>
                 </table>
             </div>
+
+            {/* Controles de Paginación */}
+            {filteredInvoices.length > 0 && (
+                <div className="flex justify-between items-center p-4 mt-4" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', borderRadius: '0 0 0.75rem 0.75rem' }}>
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <span>Mostrar</span>
+                        <select
+                            value={rowsPerPage}
+                            onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                            style={{
+                                padding: '0.25rem 0.5rem',
+                                borderRadius: '4px',
+                                border: '1px solid var(--border)',
+                                background: 'white',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <option value={20}>20 filas</option>
+                            <option value={50}>50 filas</option>
+                            <option value={100}>100 filas</option>
+                        </select>
+                        <span>Mostrando {startIndex} - {endIndex} de {filteredInvoices.length}</span>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <button
+                            className="btn-secondary"
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            style={{ padding: '0.4rem 0.8rem', opacity: currentPage === 1 ? 0.5 : 1 }}
+                        >
+                            Anterior
+                        </button>
+                        
+                        <div className="flex gap-1">
+                            {[...Array(totalPages)].map((_, i) => {
+                                const page = i + 1;
+                                // Mostrar solo las primeras 3, las últimas 3 y las cercanas a la actual
+                                if (
+                                    totalPages <= 7 ||
+                                    page === 1 ||
+                                    page === totalPages ||
+                                    (page >= currentPage - 1 && page <= currentPage + 1)
+                                ) {
+                                    return (
+                                        <button
+                                            key={page}
+                                            onClick={() => setCurrentPage(page)}
+                                            style={{
+                                                padding: '0.4rem 0.8rem',
+                                                borderRadius: '4px',
+                                                background: currentPage === page ? 'var(--primary)' : 'transparent',
+                                                color: currentPage === page ? 'white' : 'inherit',
+                                                border: '1px solid ' + (currentPage === page ? 'var(--primary)' : 'var(--border)'),
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            {page}
+                                        </button>
+                                    );
+                                } else if (
+                                    (page === 2 && currentPage > 4) ||
+                                    (page === totalPages - 1 && currentPage < totalPages - 3)
+                                ) {
+                                    return <span key={page} style={{ padding: '0.4rem' }}>...</span>;
+                                }
+                                return null;
+                            })}
+                        </div>
+
+                        <button
+                            className="btn-secondary"
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            style={{ padding: '0.4rem 0.8rem', opacity: currentPage === totalPages ? 0.5 : 1 }}
+                        >
+                            Siguiente
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

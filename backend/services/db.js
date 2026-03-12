@@ -46,7 +46,7 @@ const findUserByEmail = async (email) => {
 /**
  * Guardar factura extraída
  */
-const saveInvoice = async (userId, data, channel, rawResponse) => {
+const saveInvoice = async (userId, data, channel, rawResponse, filePath = null) => {
     const {
         emisor,
         fecha_emision,
@@ -60,14 +60,15 @@ const saveInvoice = async (userId, data, channel, rawResponse) => {
 
     const text = `
     INSERT INTO invoices (
-      user_id, emisor, invoice_date, reference, subtotal, iva, r_eq, total_taxes, total, ingestion_channel, raw_ai_response
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      user_id, emisor, invoice_date, reference, subtotal, iva, r_eq, total_taxes, total, ingestion_channel, raw_ai_response, file_path
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *;
   `;
     const values = [
-        userId, emisor, fecha_emision, referencia, subtotal, iva, r_eq, total_impuestos, total, channel, rawResponse
+        userId, emisor, fecha_emision, referencia, subtotal, iva, r_eq, total_impuestos, total, channel, rawResponse, filePath
     ];
 
+    console.log("[DB] Guardando factura - Canal:", channel, "Ref:", referencia, "File:", filePath);
     const res = await query(text, values);
     return res.rows[0];
 };
@@ -113,6 +114,17 @@ const updateUserTelegramId = async (userId, telegramId) => {
     await query("UPDATE users SET telegram_id = $1 WHERE id = $2", [telegramId.toString(), userId]);
 };
 
+/**
+ * Obtener una factura por ID
+ */
+const getInvoiceById = async (userId, invoiceId) => {
+    const res = await query(
+        "SELECT * FROM invoices WHERE id = $1 AND user_id = $2",
+        [invoiceId, userId]
+    );
+    return res.rows[0];
+};
+
 module.exports = {
     query,
     findUserByTelegramId,
@@ -122,5 +134,6 @@ module.exports = {
     checkDuplicateReference,
     checkDuplicateAmountDate,
     deleteInvoice,
+    getInvoiceById,
     updateUserTelegramId
 };

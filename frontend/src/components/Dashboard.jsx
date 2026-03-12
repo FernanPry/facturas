@@ -10,6 +10,7 @@ export default function Dashboard({ apiBase, user }) {
     const [filterTerm, setFilterTerm] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [reqFilter, setReqFilter] = useState('all'); // 'all', 'with', 'without'
 
     useEffect(() => {
         const fetchData = async () => {
@@ -37,13 +38,20 @@ export default function Dashboard({ apiBase, user }) {
         return invoices.filter(inv => {
             const matchesTerm = inv.emisor?.toLowerCase().includes(filterTerm.toLowerCase());
 
-            const invDate = new Date(inv.invoice_date);
-            const matchesStart = !startDate || invDate >= new Date(startDate);
-            const matchesEnd = !endDate || invDate <= new Date(endDate);
+            // Normalizar fechas para comparación inclusive (solo YYYY-MM-DD) usando componentes locales para evitar desfases de zona horaria
+            const d = new Date(inv.invoice_date);
+            const invDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const matchesStart = !startDate || invDateStr >= startDate;
+            const matchesEnd = !endDate || invDateStr <= endDate;
 
-            return matchesTerm && matchesStart && matchesEnd;
+            const rEqValue = parseFloat(inv.r_eq || 0);
+            const matchesReq = reqFilter === 'all' || 
+                (reqFilter === 'with' && rEqValue > 0) || 
+                (reqFilter === 'without' && rEqValue === 0);
+
+            return matchesTerm && matchesStart && matchesEnd && matchesReq;
         });
-    }, [invoices, filterTerm, startDate, endDate]);
+    }, [invoices, filterTerm, startDate, endDate, reqFilter]);
 
     // Estadísticas calculadas dinámicamente
     const stats = useMemo(() => {
@@ -115,12 +123,15 @@ export default function Dashboard({ apiBase, user }) {
                 invoices={invoices}
                 filteredInvoices={filteredInvoices}
                 user={user}
+                apiBase={apiBase}
                 filterTerm={filterTerm}
                 setFilterTerm={setFilterTerm}
                 startDate={startDate}
                 setStartDate={setStartDate}
                 endDate={endDate}
                 setEndDate={setEndDate}
+                reqFilter={reqFilter}
+                setReqFilter={setReqFilter}
             />
         </div>
     );

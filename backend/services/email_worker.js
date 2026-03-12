@@ -3,6 +3,7 @@ const { simpleParser } = require("mailparser");
 const nodemailer = require("nodemailer");
 const db = require("./db");
 const gemini = require("./gemini");
+const storage = require("./storage");
 
 /**
  * Servicio Worker de Email
@@ -150,10 +151,21 @@ class EmailWorker {
         console.log(`Procesando ${attachments.length} adjuntos para el usuario ${user.email}...`);
 
         try {
-            const filesData = attachments.map(att => ({
-                data: att.content.toString("base64"),
-                mimeType: att.contentType
-            }));
+            let mainFilePath = null;
+            const filesData = attachments.map((att, index) => {
+                const buffer = att.content;
+                
+                // Guardar el archivo físicamente
+                const savedPath = storage.saveFile(user.id, buffer, att.filename || `email-adjunto-${index}`);
+                
+                // El primer archivo se considera el principal para la factura
+                if (index === 0) mainFilePath = savedPath;
+
+                return {
+                    data: buffer.toString("base64"),
+                    mimeType: att.contentType
+                };
+            });
 
             const result = await gemini.extractInvoiceData(filesData, user.r_eq);
 
@@ -179,7 +191,7 @@ class EmailWorker {
             }
 
             // Guardar en DB
-            await db.saveInvoice(user.id, result, 'email', result);
+            await db.saveInvoice(user.id, result, 'email', result, mainFilePath);
 
             // Construir mensaje de éxito formateado
             const feedback = `✅ Datos extraídos y guardados:\n\n` +

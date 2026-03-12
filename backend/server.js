@@ -4,10 +4,35 @@ const path = require("path");
 const cors = require("cors");
 const morgan = require("morgan");
 const db = require("./services/db");
-const telegram = require("./services/telegram");
+const telegramService = require("./services/telegram"); // Renamed from 'telegram'
 const emailWorker = require("./services/email_worker");
+const storage = require("./services/storage"); // Added
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const gemini = require("./services/gemini");
+
+// Configuración de Multer para almacenamiento en disco con aislamiento por usuario
+const fs = require("fs");
+const multerStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const userId = req.user.id;
+        const uploadPath = path.join(__dirname, "uploads", userId.toString());
+        
+        // Crear carpeta del usuario si no existe
+        if (!fs.existsSync(uploadPath)) {
+            fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        const ext = path.extname(file.originalname);
+        cb(null, file.fieldname + "-" + uniqueSuffix + ext);
+    }
+});
+
+const upload = multer({ storage: multerStorage });
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 
@@ -19,8 +44,17 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan("dev"));
 
+// Middleware de log personalizado para ver todas las peticiones
+app.use((req, res, next) => {
+    console.log(`[HTTP] ${req.method} ${req.url}`);
+    next();
+});
+
 // Servir archivos estáticos del Frontend (Productividad en Raspberry Pi)
 app.use(express.static(path.join(__dirname, "../frontend/dist")));
+
+// Servir archivos de facturas subidas
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /**
  * Middleware de Autenticación JWT - SOLO PARA RUTAS /api
@@ -100,11 +134,39 @@ app.get("/api/invoices", async (req, res) => {
     }
 });
 
+app.get("/api/invoices/download/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        const invoice = await db.getInvoiceById(req.user.id, id);
+
+        if (!invoice || !invoice.file_path) {
+            return res.status(404).json({ error: "Archivo no encontrado" });
+        }
+
+        const fullPath = path.join(__dirname, invoice.file_path);
+        
+        if (!fs.existsSync(fullPath)) {
+            console.error("[STORAGE] El archivo no existe en el disco:", fullPath);
+            return res.status(404).json({ error: "El archivo físico no existe en el servidor" });
+        }
+
+        // Forzar descarga
+        res.download(fullPath, `${invoice.emisor}-${invoice.reference || invoice.id}.pdf`);
+    } catch (error) {
+        console.error("Error al descargar factura:", error);
+        res.status(500).json({ error: "Error al procesar la descarga" });
+    }
+});
+
 app.delete("/api/invoices/:id", async (req, res) => {
     try {
         const id = req.params.id;
         const deleted = await db.deleteInvoice(req.user.id, id);
         if (deleted) {
+            // Borrar archivo físico si existe usando la utilidad centralizada
+            if (deleted.file_path) {
+                storage.deleteFile(deleted.file_path);
+            }
             res.json({ message: "Factura eliminada correctamente", id: deleted.id });
         } else {
             res.status(404).json({ error: "No se encontró la factura para eliminar" });
@@ -112,6 +174,72 @@ app.delete("/api/invoices/:id", async (req, res) => {
     } catch (error) {
         console.error("Error eliminando factura:", error);
         res.status(500).json({ error: "Error interno del servidor" });
+    }
+});
+
+app.post("/api/invoices/upload", upload.single("invoice"), async (req, res) => {
+    try {
+        console.log("[UPLOAD] Iniciando subida manual para usuario:", req.user.id);
+        if (!req.file) {
+            console.log("[UPLOAD] Error: No se recibió archivo");
+            return res.status(400).json({ error: "No se subió ningún archivo" });
+        }
+
+        console.log("[UPLOAD] Archivo recibido y guardado en:", req.file.path);
+
+        const userFetch = await db.query("SELECT * FROM users WHERE id = $1", [req.user.id]);
+        const userData = userFetch.rows[0];
+
+        if (!userData) {
+            return res.status(404).json({ error: "Usuario no encontrado" });
+        }
+
+        // Para Gemini necesitamos leer el archivo
+        const fileBase64 = fs.readFileSync(req.file.path).toString("base64");
+
+        const fileData = [{
+            data: fileBase64,
+            mimeType: req.file.mimetype
+        }];
+
+        console.log("[UPLOAD] Enviando a Gemini AI...");
+        const result = await gemini.extractInvoiceData(fileData, userData.r_eq);
+        console.log("[UPLOAD] Resultado IA recibido:", result.emisor, result.total);
+
+        // Validaciones de duplicados
+        const duplicateRef = await db.checkDuplicateReference(userData.id, result.referencia);
+        if (duplicateRef) {
+            return res.json({ 
+                warning: true, 
+                message: `La factura con nº "${result.referencia}" ya existe en tu historial. No se ha guardado de nuevo.`,
+                invoice: result
+            });
+        }
+
+        const duplicateAmount = await db.checkDuplicateAmountDate(userData.id, result.total, result.fecha_emision);
+        let warningMessage = "";
+        if (duplicateAmount) {
+            warningMessage = "Aviso: Se ha detectado otra factura con el mismo importe y fecha. ";
+        }
+
+        // Alarma de Recargo de Equivalencia (R.EQ)
+        if (userData.r_eq && (!result.r_eq || parseFloat(result.r_eq) <= 0)) {
+            warningMessage += "¡Atención!: No se ha detectado Recargo de Equivalencia (R.EQ.) en esta factura. ";
+        }
+
+        // Guardar en DB incluyendo la ruta del archivo (relativa al backend)
+        const relativePath = `uploads/${userData.id}/${path.basename(req.file.path)}`;
+        const saved = await db.saveInvoice(userData.id, result, 'web', result, relativePath);
+
+        res.json({
+            message: warningMessage || "Factura procesada y guardada correctamente.",
+            warning: !!warningMessage,
+            invoice: saved
+        });
+
+    } catch (error) {
+        console.error("[UPLOAD] Error crítico:", error);
+        res.status(500).json({ error: "Error al procesar la factura con IA: " + error.message });
     }
 });
 
@@ -197,7 +325,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
     // Iniciar Bots y Workers
     if (process.env.TELEGRAM_BOT_TOKEN) {
-        telegram.launch();
+        telegramService.launch();
     }
 
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
@@ -205,11 +333,23 @@ app.listen(PORT, '0.0.0.0', () => {
     }
 });
 
-/**
- * SPA Routing: Redirigir todas las rutas no-API al index.html del frontend
- */
+// SPA Routing: Redirigir todas las rutas no-API y no-uploads al index.html del frontend
 app.get(/.*/, (req, res) => {
-    if (!req.url.startsWith("/api")) {
+    if (!req.url.startsWith("/api") && !req.url.startsWith("/uploads")) {
         res.sendFile(path.join(__dirname, "../frontend/dist/index.html"));
+    } else {
+        res.status(404).json({ error: "Ruta no encontrada" });
     }
+});
+
+// Manejador de errores global para que siempre devuelvan JSON en /api
+app.use((err, req, res, next) => {
+    console.error("[GLOBAL ERROR]", err);
+    if (req.url.startsWith("/api")) {
+        return res.status(err.status || 500).json({ 
+            error: "Error interno en el servidor", 
+            message: err.message 
+        });
+    }
+    next(err);
 });

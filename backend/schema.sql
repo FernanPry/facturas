@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     r_eq DECIMAL(12, 2),
     total_taxes DECIMAL(12, 2),
     total DECIMAL(12, 2),
-    ingestion_channel TEXT CHECK (ingestion_channel IN ('telegram', 'email')),
+    ingestion_channel TEXT CHECK (ingestion_channel IN ('telegram', 'email', 'web')),
     raw_ai_response JSONB,
     file_path TEXT, -- Optional: path to stored PDF/Image
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

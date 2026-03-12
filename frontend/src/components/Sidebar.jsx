@@ -11,6 +11,7 @@ import {
 const Sidebar = ({ activeTab, onTabChange, onLogout, user }) => {
     const menuItems = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'upload', label: 'Subir Facturas', icon: Plus },
         { id: 'profile', label: 'Perfil', icon: User },
         { id: 'settings', label: 'Ajustes', icon: Settings },
     ];
@@ -21,7 +22,7 @@ const Sidebar = ({ activeTab, onTabChange, onLogout, user }) => {
                 <div className="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-100">
                     <FileText size={20} color="#fff" />
                 </div>
-                <span className="font-bold tracking-tighter text-xl text-slate-900">Cajón AI</span>
+                <span className="font-bold tracking-tighter text-xl text-slate-900">Cajón IA</span>
             </div>
 
             <div className="flex-1 space-y-1">

@@ -2,6 +2,7 @@ const { Telegraf, Markup } = require("telegraf");
 const axios = require("axios");
 const db = require("./db");
 const gemini = require("./gemini");
+const storage = require("./storage");
 
 /**
  * Servicio del Bot de Telegram
@@ -167,11 +168,24 @@ class TelegramService {
 
     async processFiles(ctx, user, urls, mimeType) {
         try {
-            // Descargar archivos y convertir a base64
-            const filesData = await Promise.all(urls.map(async (url) => {
+            // Descargar archivos, guardarlos físicamente y preparar para Gemini
+            let mainFilePath = null;
+            const filesData = await Promise.all(urls.map(async (url, index) => {
                 const response = await axios.get(url, { responseType: 'arraybuffer' });
+                const buffer = Buffer.from(response.data);
+                
+                // Generar un nombre sugerido
+                const extension = mimeType === "application/pdf" ? ".pdf" : ".jpg";
+                const suggestedName = `telegram-${index}${extension}`;
+                
+                // Guardar el archivo físicamente
+                const savedPath = storage.saveFile(user.id, buffer, suggestedName);
+                
+                // El primer archivo se considera el principal para la factura
+                if (index === 0) mainFilePath = savedPath;
+
                 return {
-                    data: Buffer.from(response.data).toString('base64'),
+                    data: buffer.toString('base64'),
                     mimeType: mimeType
                 };
             }));
@@ -195,7 +209,7 @@ class TelegramService {
             }
 
             // Guardar en DB
-            await db.saveInvoice(user.id, result, 'telegram', result);
+            await db.saveInvoice(user.id, result, 'telegram', result, mainFilePath);
 
             // Construir mensaje de éxito formateado
             const feedback = `✅ Datos extraídos y guardados:\n\n` +
