@@ -40,7 +40,7 @@ export default function InvoiceTable({
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:3001/api/invoices/${id}`, {
+            const response = await fetch(`${apiBase}/invoices/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
