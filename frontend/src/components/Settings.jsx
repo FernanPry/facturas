@@ -73,7 +73,7 @@ export default function Settings({ user, setUser, apiBase }) {
                         />
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
                         <div className="flex flex-col gap-2">
                             <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Nueva Contraseña</label>
                             <input
@@ -98,7 +98,7 @@ export default function Settings({ user, setUser, apiBase }) {
                         </div>
                     </div>
 
-                    <div className="flex justify-between items-center mt-4">
+                    <div className="flex flex-wrap gap-4 justify-between items-center mt-4">
                         <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{status}</span>
                         <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2.5rem' }}>
                             Actualizar Credenciales

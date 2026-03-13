@@ -159,7 +159,7 @@ export default function ManualUpload({ apiBase }) {
                             {!result.error && result.invoice && (
                                 <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.5)', borderRadius: '0.5rem' }}>
                                     <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>DETALLES EXTRAÍDOS:</p>
-                                    <div className="grid grid-cols-2 gap-2 mt-2" style={{ fontSize: '0.85rem' }}>
+                                    <div className="grid gap-2 mt-2" style={{ fontSize: '0.85rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
                                         <span>📅 Fecha:</span> <span className="font-semibold">{result.invoice.invoice_date}</span>
                                         <span>👤 Emisor:</span> <span className="font-semibold">{result.invoice.emisor}</span>
                                         <span>🔢 Factura:</span> <span className="font-semibold">{result.invoice.reference}</span>
