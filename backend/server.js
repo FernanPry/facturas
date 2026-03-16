@@ -150,8 +150,9 @@ app.get("/api/invoices/download/:id", async (req, res) => {
             return res.status(404).json({ error: "El archivo físico no existe en el servidor" });
         }
 
-        // Forzar descarga
-        res.download(fullPath, `${invoice.emisor}-${invoice.reference || invoice.id}.pdf`);
+        // Forzar descarga con el nombre adecuado y la extensión original (que ahora será .pdf casi siempre)
+        const fileExt = path.extname(invoice.file_path) || '.pdf';
+        res.download(fullPath, `${invoice.emisor}-${invoice.reference || invoice.id}${fileExt}`);
     } catch (error) {
         console.error("Error al descargar factura:", error);
         res.status(500).json({ error: "Error al procesar la descarga" });
@@ -227,8 +228,17 @@ app.post("/api/invoices/upload", upload.single("invoice"), async (req, res) => {
             warningMessage += "¡Atención!: No se ha detectado Recargo de Equivalencia (R.EQ.) en esta factura. ";
         }
 
-        // Guardar en DB incluyendo la ruta del archivo (relativa al backend)
-        const relativePath = `uploads/${userData.id}/${path.basename(req.file.path)}`;
+        // Procesar y guardar el archivo final (convirtiendo a PDF si es imagen)
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const relativePath = await storage.saveInvoiceFiles(userData.id, [{
+            buffer: fileBuffer,
+            originalName: req.file.originalname,
+            mimeType: req.file.mimetype
+        }]);
+
+        // Borrar el archivo temporal de multer
+        fs.unlinkSync(req.file.path);
+
         const saved = await db.saveInvoice(userData.id, result, 'web', result, relativePath);
 
         res.json({

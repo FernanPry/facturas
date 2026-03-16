@@ -151,23 +151,24 @@ class EmailWorker {
         console.log(`Procesando ${attachments.length} adjuntos para el usuario ${user.email}...`);
 
         try {
-            let mainFilePath = null;
             const filesData = attachments.map((att, index) => {
-                const buffer = att.content;
-                
-                // Guardar el archivo físicamente
-                const savedPath = storage.saveFile(user.id, buffer, att.filename || `email-adjunto-${index}`);
-                
-                // El primer archivo se considera el principal para la factura
-                if (index === 0) mainFilePath = savedPath;
-
                 return {
-                    data: buffer.toString("base64"),
+                    buffer: att.content,
+                    originalName: att.filename || `email-adjunto-${index}`,
                     mimeType: att.contentType
                 };
             });
 
-            const result = await gemini.extractInvoiceData(filesData, user.r_eq);
+            // Guardar agrupado
+            const mainFilePath = await storage.saveInvoiceFiles(user.id, filesData);
+
+            // Preparar para Gemini
+            const geminiFiles = filesData.map(f => ({
+                data: f.buffer.toString('base64'),
+                mimeType: f.mimeType
+            }));
+
+            const result = await gemini.extractInvoiceData(geminiFiles, user.r_eq);
 
             // Validaciones de duplicados
             const duplicateRef = await db.checkDuplicateReference(user.id, result.referencia);

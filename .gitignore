@@ -36,5 +36,6 @@ backend/database.sqlite
 # App specific
 backend/uploads/
 backend/server.log
+backups/
 *.odt
 .~lock.*

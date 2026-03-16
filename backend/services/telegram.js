@@ -168,8 +168,7 @@ class TelegramService {
 
     async processFiles(ctx, user, urls, mimeType) {
         try {
-            // Descargar archivos, guardarlos físicamente y preparar para Gemini
-            let mainFilePath = null;
+            // Descargar archivos y preparar para procesamiento
             const filesData = await Promise.all(urls.map(async (url, index) => {
                 const response = await axios.get(url, { responseType: 'arraybuffer' });
                 const buffer = Buffer.from(response.data);
@@ -178,19 +177,23 @@ class TelegramService {
                 const extension = mimeType === "application/pdf" ? ".pdf" : ".jpg";
                 const suggestedName = `telegram-${index}${extension}`;
                 
-                // Guardar el archivo físicamente
-                const savedPath = storage.saveFile(user.id, buffer, suggestedName);
-                
-                // El primer archivo se considera el principal para la factura
-                if (index === 0) mainFilePath = savedPath;
-
                 return {
-                    data: buffer.toString('base64'),
+                    buffer: buffer,
+                    originalName: suggestedName,
                     mimeType: mimeType
                 };
             }));
 
-            const result = await gemini.extractInvoiceData(filesData, user.r_eq);
+            // Guardar los archivos de forma agrupada (si son imágenes, se crea un solo PDF)
+            const mainFilePath = await storage.saveInvoiceFiles(user.id, filesData);
+
+            // Preparar datos para Gemini
+            const geminiFiles = filesData.map(f => ({
+                data: f.buffer.toString('base64'),
+                mimeType: f.mimeType
+            }));
+
+            const result = await gemini.extractInvoiceData(geminiFiles, user.r_eq);
 
             // Validaciones de duplicados
             const duplicateRef = await db.checkDuplicateReference(user.id, result.referencia);

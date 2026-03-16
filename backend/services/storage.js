@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const pdfService = require('./pdf');
+
 /**
  * Utilidad para el manejo de almacenamiento persistente de facturas
  */
@@ -34,6 +36,39 @@ const storage = {
     },
 
     /**
+     * Procesa y guarda uno o varios archivos de factura, convirtiéndolos a PDF si es necesario.
+     * @param {number|string} userId - ID del usuario
+     * @param {Array<{buffer: Buffer, originalName: string, mimeType: string}>} files - Archivos a procesar
+     * @returns {Promise<string>} - Ruta relativa del PDF final
+     */
+    saveInvoiceFiles: async (userId, files) => {
+        if (!files || files.length === 0) {
+            throw new Error("No se han proporcionado archivos");
+        }
+
+        // Si es un solo PDF, lo guardamos directamente
+        if (files.length === 1 && files[0].mimeType === 'application/pdf') {
+            return storage.saveFile(userId, files[0].buffer, files[0].originalName);
+        }
+
+        // Si son imágenes (o varios PDFs/mezcla), los convertimos/unimos en un solo PDF
+        // Por ahora, el requerimiento es agrupar fotos en un PDF.
+        const imageBuffers = files
+            .filter(f => f.mimeType.startsWith('image/'))
+            .map(f => f.buffer);
+
+        if (imageBuffers.length === 0 && files.length > 0) {
+            // Si no hay imágenes pero hay archivos (ej. un PDF solo), usar el primero
+            return storage.saveFile(userId, files[0].buffer, files[0].originalName);
+        }
+
+        const pdfBuffer = await pdfService.createPdfFromImages(imageBuffers);
+        const suggestedName = imagesToPdfName(files[0].originalName);
+        
+        return storage.saveFile(userId, pdfBuffer, suggestedName);
+    },
+
+    /**
      * Elimina un archivo físico del disco
      * @param {string} relativePath - Ruta relativa guardada
      */
@@ -48,5 +83,14 @@ const storage = {
         }
     }
 };
+
+/**
+ * Genera un nombre de archivo PDF basado en el nombre original de la imagen
+ */
+function imagesToPdfName(originalName) {
+    const ext = path.extname(originalName);
+    const baseName = path.basename(originalName, ext);
+    return `${baseName}.pdf`;
+}
 
 module.exports = storage;
