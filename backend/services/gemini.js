@@ -1,5 +1,14 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const fs = require("fs");
+const dns = require("dns");
+
+// Polyfill fetch para Node 18 y forzar IPv4 para evitar errores de red en Raspberry Pi
+// Forzamos node-fetch porque el fetch nativo de Node 18 a veces falla en este entorno
+global.fetch = require("node-fetch");
+
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 /**
  * Servicio para interactuar con Gemini 1.5 Flash para extracción OCR

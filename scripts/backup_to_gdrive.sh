@@ -6,7 +6,7 @@
 # ==============================================================================
 
 # Directorios y Configuración
-PROJECT_ROOT="/home/fermarti/projects/facturas"
+PROJECT_ROOT="/home/charly/projects/facturas"
 BACKUP_TEMP_DIR="$PROJECT_ROOT/backups/temp"
 UPLOADS_DIR="$PROJECT_ROOT/backend/uploads"
 ENV_FILE="$PROJECT_ROOT/backend/.env"
