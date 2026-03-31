@@ -10,13 +10,41 @@ export default function InvoiceTable({
     setStartDate,
     endDate,
     setEndDate,
-    reqFilter,
-    setReqFilter,
+    otherExpenseFilter,
+    setOtherExpenseFilter,
+    activityFilter,
+    setActivityFilter,
     apiBase
 }) {
     // Paginación
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
+    const [activities, setActivities] = useState([]);
+
+    // Cargar actividades para el filtro
+    useEffect(() => {
+        const fetchActivities = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                const res = await fetch(`${apiBase}/activities`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data)) {
+                        setActivities(data.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+                    } else {
+                        console.error("Activities data is not an array:", data);
+                    }
+                } else {
+                    console.error("Failed to fetch activities:", res.statusText);
+                }
+            } catch (err) {
+                console.error("Error fetching activities for filter:", err);
+            }
+        };
+        fetchActivities();
+    }, [apiBase]);
 
     // Resetear a la primera página cuando cambian los filtros o el tamaño de página
     useEffect(() => {
@@ -60,14 +88,13 @@ export default function InvoiceTable({
         const dataToExport = filteredInvoices;
         if (dataToExport.length === 0) return;
 
-        const headers = ["Emisor", "Fecha", "Referencia", "Base", "IVA", "R.EQ", "Total", "Canal"];
+        const headers = ["Emisor", "Fecha", "Actividad", "Otros Gastos", "Referencia", "Total", "Canal"];
         const rows = dataToExport.map(inv => [
             inv.emisor,
             inv.invoice_date,
+            inv.actividad || "Sin asignar",
+            inv.is_other_expense ? "Sí" : "No",
             inv.reference,
-            inv.subtotal,
-            inv.iva,
-            inv.r_eq,
             inv.total,
             inv.ingestion_channel
         ]);
@@ -87,10 +114,11 @@ export default function InvoiceTable({
         setFilterTerm('');
         setStartDate('');
         setEndDate('');
-        setReqFilter('all');
+        setOtherExpenseFilter('all');
+        setActivityFilter('all');
     };
 
-    const hasFilters = filterTerm || startDate || endDate || reqFilter !== 'all';
+    const hasFilters = filterTerm || startDate || endDate || otherExpenseFilter !== 'all' || activityFilter !== 'all';
 
     return (
         <div className="card" style={{ marginTop: '2rem' }}>
@@ -103,6 +131,20 @@ export default function InvoiceTable({
                 </div>
 
                 <div className="flex flex-wrap items-end gap-4 p-4" style={{ background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
+                    <div style={{ flex: '0 0 160px' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>OTRO GASTO</label>
+                        <select
+                            className="input-minimal"
+                            value={otherExpenseFilter}
+                            onChange={(e) => setOtherExpenseFilter(e.target.value)}
+                            style={{ width: '100%', cursor: 'pointer' }}
+                        >
+                            <option value="all">Todos</option>
+                            <option value="yes">Sí (Otros)</option>
+                            <option value="no">No (Ordinarios)</option>
+                        </select>
+                    </div>
+
                     <div style={{ flex: '1 1 250px', position: 'relative' }}>
                         <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>BUSCAR EMISOR</label>
                         <div style={{ position: 'relative' }}>
@@ -116,20 +158,6 @@ export default function InvoiceTable({
                                 style={{ width: '100%', paddingLeft: '2.5rem' }}
                             />
                         </div>
-                    </div>
-
-                    <div style={{ flex: '0 0 160px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>RECARGO EQ.</label>
-                        <select
-                            className="input-minimal"
-                            value={reqFilter}
-                            onChange={(e) => setReqFilter(e.target.value)}
-                            style={{ width: '100%', cursor: 'pointer' }}
-                        >
-                            <option value="all">Todas</option>
-                            <option value="with">Con R. EQ</option>
-                            <option value="without">Sin R. EQ</option>
-                        </select>
                     </div>
 
                     <div style={{ flex: '0 0 160px' }}>
@@ -154,6 +182,21 @@ export default function InvoiceTable({
                         />
                     </div>
 
+                    <div style={{ flex: '1 1 160px' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>ACTIVIDAD</label>
+                        <select
+                            className="input-minimal"
+                            value={activityFilter}
+                            onChange={(e) => setActivityFilter(e.target.value)}
+                            style={{ width: '100%', cursor: 'pointer' }}
+                        >
+                            <option value="all">Todas las actividades</option>
+                            {activities.map(act => (
+                                <option key={act.id} value={act.name}>{act.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     {hasFilters && (
                         <button
                             onClick={clearFilters}
@@ -176,36 +219,67 @@ export default function InvoiceTable({
                 <table style={{ minWidth: '850px' }}>
                     <thead>
                         <tr>
-                            <th style={{ width: '22%' }}>Emisor</th>
+                            <th style={{ width: '8%', fontSize: '0.65rem', lineHeight: '1.1', textAlign: 'center' }}>Otros gastos<br/>explotación</th>
+                            <th style={{ width: '18%' }}>Emisor</th>
                             <th style={{ width: '12%' }}>Fecha</th>
+                            <th style={{ width: '15%' }}>Actividad</th>
                             <th style={{ width: '15%' }}>Nº Factura</th>
-                            <th style={{ width: '10%' }}>Base</th>
-                            <th style={{ width: '10%' }}>IVA</th>
-                            <th style={{ width: '10%' }}>R.EQ</th>
-                            <th style={{ width: '10%' }}>Total</th>
+                            <th style={{ width: '12%' }}>Total</th>
                             <th style={{ width: '8%' }}>Canal</th>
-                            <th style={{ width: '3%', textAlign: 'center' }}></th>
+                            <th style={{ width: '4%', textAlign: 'center' }}></th>
                         </tr>
                     </thead>
                     <tbody>
                         {paginatedInvoices.length > 0 ? paginatedInvoices.map((inv) => {
-                            const missingREq = user?.r_eq && (!inv.r_eq || parseFloat(inv.r_eq) <= 0);
+                            const rowStyle = {
+                                background: inv.is_other_expense ? '#fff1f2' : 'transparent',
+                                transition: 'background 0.2s'
+                            };
+
+                            const handleToggleOtherExpense = async (e) => {
+                                const newValue = e.target.checked;
+                                try {
+                                    const token = localStorage.getItem('token');
+                                    const res = await fetch(`${apiBase}/invoices/${inv.id}/other-expense`, {
+                                        method: 'PUT',
+                                        headers: { 
+                                            'Authorization': `Bearer ${token}`,
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({ value: newValue })
+                                    });
+                                    if (res.ok) {
+                                        // Actualizar estado local para feedback inmediato
+                                        inv.is_other_expense = newValue;
+                                        // Forzar re-render (truco rápido para este componente que usa props)
+                                        window.location.reload(); 
+                                    }
+                                } catch (err) {
+                                    console.error("Error updating other expense:", err);
+                                }
+                            };
+
                             return (
-                                <tr key={inv.id} style={missingREq ? { background: '#fee2e2' } : null}>
-                                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap', color: missingREq ? '#991b1b' : 'inherit' }}>{inv.emisor}</td>
-                                    <td style={{ whiteSpace: 'nowrap', color: missingREq ? '#991b1b' : 'inherit' }}>{new Date(inv.invoice_date).toLocaleDateString()}</td>
+                                <tr key={inv.id} style={rowStyle}>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={!!inv.is_other_expense}
+                                            onChange={handleToggleOtherExpense}
+                                            style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                                        />
+                                    </td>
+                                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{inv.emisor}</td>
+                                    <td style={{ whiteSpace: 'nowrap' }}>{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : '---'}</td>
+                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{inv.actividad || 'Sin asignar'}</td>
                                     <td><code style={{
-                                        background: missingREq ? '#fecaca' : 'var(--bg-secondary)',
+                                        background: inv.is_other_expense ? '#ffe4e6' : 'var(--bg-secondary)',
                                         padding: '0.2rem 0.5rem',
                                         borderRadius: '4px',
-                                        border: '1px solid ' + (missingREq ? '#f87171' : 'var(--border)'),
-                                        fontSize: '0.8rem',
-                                        color: missingREq ? '#991b1b' : 'inherit'
+                                        border: '1px solid var(--border)',
+                                        fontSize: '0.8rem'
                                     }}>{inv.reference}</code></td>
-                                    <td style={{ color: missingREq ? '#991b1b' : 'inherit' }}>{inv.subtotal}€</td>
-                                    <td style={{ color: missingREq ? '#991b1b' : 'inherit' }}>{inv.iva}€</td>
-                                    <td style={{ fontWeight: missingREq ? 700 : 400, color: missingREq ? '#dc2626' : 'inherit' }}>{inv.r_eq}€</td>
-                                    <td style={{ fontWeight: 700, color: missingREq ? '#991b1b' : 'var(--primary)' }}>{inv.total}€</td>
+                                    <td style={{ fontWeight: 700, color: inv.is_other_expense ? '#991b1b' : 'var(--primary)' }}>{inv.total}€</td>
                                     <td>
                                         <span style={{
                                             fontSize: '0.7rem',
@@ -296,7 +370,7 @@ export default function InvoiceTable({
                             );
                         }) : (
                             <tr>
-                                <td colSpan="9" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                                <td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                                     {hasFilters ? 'No se encontraron facturas para los filtros aplicados.' : 'Aún no has subido ninguna factura.'}
                                 </td>
                             </tr>

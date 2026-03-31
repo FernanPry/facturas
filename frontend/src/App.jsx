@@ -8,6 +8,7 @@ import Auth from './pages/Auth';
 import ProtectedRoute from './components/ProtectedRoute';
 import Settings from './components/Settings';
 import ManualUpload from './components/ManualUpload';
+import Activities from './components/Activities';
 import { API_BASE } from './config';
 
 function App() {
@@ -31,9 +32,10 @@ function App() {
           'Authorization': `Bearer ${token}`
         }
       })
-        .then(res => {
+        .then(async res => {
           if (res.ok) return res.json();
-          throw new Error('No autorizado');
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || 'No autorizado');
         })
         .then(fullUser => {
           setUser(fullUser);
@@ -42,7 +44,7 @@ function App() {
         })
         .catch(err => {
           console.error("Error fetching profile:", err);
-          if (err.message === 'No autorizado') {
+          if (err.message.includes('No autorizado') || err.message.includes('Token inválido')) {
             handleLogout();
           }
         });
@@ -84,7 +86,8 @@ function App() {
                       <h1 className="gradient-text" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
                         {activeTab === 'dashboard' ? 'Facturas' :
                           activeTab === 'profile' ? 'Configuración de Perfil' : 
-                          activeTab === 'upload' ? 'Subir Facturas' : 'Ajustes de Cuenta'}
+                          activeTab === 'upload' ? 'Subir Facturas' :
+                          activeTab === 'activities' ? 'Configuración de Actividades' : 'Ajustes de Cuenta'}
                       </h1>
                       <p style={{ color: 'var(--text-muted)' }}>
                         {activeTab === 'dashboard'
@@ -93,6 +96,8 @@ function App() {
                             ? 'Personaliza tus datos de facturación y canales de ingesta'
                             : activeTab === 'upload'
                               ? 'Carga manualmente una factura desde tu PC para procesarla por IA'
+                            : activeTab === 'activities'
+                              ? 'Relaciona tus emisores con actividades económicas específicas'
                               : 'Gestiona tus credenciales de acceso y seguridad'}
                       </p>
                     </div>
@@ -110,6 +115,9 @@ function App() {
                   )}
                   {activeTab === 'upload' && (
                     <ManualUpload apiBase={API_BASE} />
+                  )}
+                  {activeTab === 'activities' && (
+                    <Activities apiBase={API_BASE} />
                   )}
                 </main>
               </div>

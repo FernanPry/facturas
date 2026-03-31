@@ -5,26 +5,42 @@ import InvoiceTable from './InvoiceTable';
 export default function Dashboard({ apiBase, user }) {
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     // Estados de filtrado
     const [filterTerm, setFilterTerm] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [reqFilter, setReqFilter] = useState('all'); // 'all', 'with', 'without'
+    const [otherExpenseFilter, setOtherExpenseFilter] = useState('all'); // 'all', 'yes', 'no'
+    const [activityFilter, setActivityFilter] = useState('all'); // 'all' or activity name
 
     useEffect(() => {
         const fetchData = async () => {
             try {
                 const token = localStorage.getItem('token');
+                if (!token) throw new Error("No hay sesión activa");
+
                 const [invRes] = await Promise.all([
                     fetch(`${apiBase}/invoices`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     })
                 ]);
+
+                if (!invRes.ok) {
+                    if (invRes.status === 401) throw new Error("Sesión expirada");
+                    throw new Error("Error al obtener las facturas");
+                }
+
                 const invData = await invRes.json();
-                setInvoices(invData);
+                if (Array.isArray(invData)) {
+                    setInvoices(invData);
+                } else {
+                    console.error("Data is not an array:", invData);
+                    setInvoices([]);
+                }
             } catch (error) {
                 console.error("Error fetching dashboard data:", error);
+                setError(error.message);
             } finally {
                 setLoading(false);
             }
@@ -36,22 +52,30 @@ export default function Dashboard({ apiBase, user }) {
     // Lógica de filtrado combinada
     const filteredInvoices = useMemo(() => {
         return invoices.filter(inv => {
-            const matchesTerm = inv.emisor?.toLowerCase().includes(filterTerm.toLowerCase());
+            const matchesTerm = (inv.emisor || '').toLowerCase().includes((filterTerm || '').toLowerCase());
 
-            // Normalizar fechas para comparación inclusive (solo YYYY-MM-DD) usando componentes locales para evitar desfases de zona horaria
-            const d = new Date(inv.invoice_date);
-            const invDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            const matchesStart = !startDate || invDateStr >= startDate;
-            const matchesEnd = !endDate || invDateStr <= endDate;
+            // Normalizar fechas para comparación inclusive (solo YYYY-MM-DD)
+            let matchesStart = true;
+            let matchesEnd = true;
+            
+            if (inv.invoice_date) {
+                const d = new Date(inv.invoice_date);
+                if (!isNaN(d.getTime())) {
+                    const invDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    matchesStart = !startDate || invDateStr >= startDate;
+                    matchesEnd = !endDate || invDateStr <= endDate;
+                }
+            }
 
-            const rEqValue = parseFloat(inv.r_eq || 0);
-            const matchesReq = reqFilter === 'all' || 
-                (reqFilter === 'with' && rEqValue > 0) || 
-                (reqFilter === 'without' && rEqValue === 0);
+            const matchesOtherExpense = otherExpenseFilter === 'all' ||
+                (otherExpenseFilter === 'yes' && inv.is_other_expense) ||
+                (otherExpenseFilter === 'no' && !inv.is_other_expense);
 
-            return matchesTerm && matchesStart && matchesEnd && matchesReq;
+            const matchesActivity = activityFilter === 'all' || inv.actividad === activityFilter;
+
+            return matchesTerm && matchesStart && matchesEnd && matchesOtherExpense && matchesActivity;
         });
-    }, [invoices, filterTerm, startDate, endDate, reqFilter]);
+    }, [invoices, filterTerm, startDate, endDate, otherExpenseFilter, activityFilter]);
 
     // Estadísticas calculadas dinámicamente
     const stats = useMemo(() => {
@@ -86,6 +110,15 @@ export default function Dashboard({ apiBase, user }) {
 
     if (loading) return <div style={{ color: 'var(--text-muted)' }}>Cargando datos...</div>;
 
+    if (error) return (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', border: '1px solid #fee2e2', background: '#fef2f2' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⚠️</div>
+            <h3 style={{ color: '#991b1b', marginBottom: '0.5rem' }}>Error al cargar el dashboard</h3>
+            <p style={{ color: '#b91c1c', marginBottom: '1.5rem' }}>{error}</p>
+            <button className="btn btn-primary" onClick={() => window.location.reload()}>Reintentar</button>
+        </div>
+    );
+
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-wrap gap-4">
@@ -113,7 +146,7 @@ export default function Dashboard({ apiBase, user }) {
                 <SmartCard
                     title="Top Emisor"
                     value={stats.topEmisor?.emisor || "N/A"}
-                    subtext={`${stats.topEmisor?.total.toFixed(2) || 0}€ gastados`}
+                    subtext={`${stats.topEmisor?.total ? stats.topEmisor.total.toFixed(2) : '0.00'}€ gastados`}
                     icon="🏢"
                     color="var(--warning)"
                 />
@@ -130,8 +163,10 @@ export default function Dashboard({ apiBase, user }) {
                 setStartDate={setStartDate}
                 endDate={endDate}
                 setEndDate={setEndDate}
-                reqFilter={reqFilter}
-                setReqFilter={setReqFilter}
+                otherExpenseFilter={otherExpenseFilter}
+                setOtherExpenseFilter={setOtherExpenseFilter}
+                activityFilter={activityFilter}
+                setActivityFilter={setActivityFilter}
             />
         </div>
     );

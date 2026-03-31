@@ -32,6 +32,10 @@ export default function Profile({ user, setUser, apiBase }) {
                 },
                 body: JSON.stringify(formData)
             });
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Error al guardar');
+            }
             const updated = await res.json();
             setUser(updated);
             setStatus('✅ Cambios guardados');

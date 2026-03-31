@@ -5,13 +5,15 @@ import {
     User,
     LogOut,
     Settings,
-    Plus
+    Plus,
+    Briefcase
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, onTabChange, onLogout, user }) => {
     const menuItems = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'upload', label: 'Subir Facturas', icon: Plus },
+        { id: 'activities', label: 'Actividades', icon: Briefcase },
         { id: 'profile', label: 'Perfil', icon: User },
         { id: 'settings', label: 'Ajustes', icon: Settings },
     ];
