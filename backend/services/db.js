@@ -124,7 +124,12 @@ const saveInvoice = async (userId, data, channel, rawResponse, filePath = null) 
         [userId, emisor]
     );
     
-    const activityName = mappingRes.rows.length > 0 ? mappingRes.rows[0].name : null;
+    let activityName = mappingRes.rows.length > 0 ? mappingRes.rows[0].name : null;
+    
+    // Regla especial Logista: Si tiene productos específicos, forzar Actividad 3
+    if (emisor.toLowerCase().includes("logista") && data.especial_logista) {
+        activityName = "Actividad 3";
+    }
 
     const text = `
     INSERT INTO invoices (
@@ -287,12 +292,6 @@ const linkIssuerToActivity = async (userId, emisorName, activityId) => {
         const actRes = await query("SELECT name FROM activities WHERE id = $1", [activityId]);
         if (actRes.rows.length > 0) activityName = actRes.rows[0].name;
     }
-
-    // 3. Actualizar retroactivamente todas las facturas de ese emisor
-    await query(
-        "UPDATE invoices SET actividad = $1 WHERE user_id = $2 AND emisor = $3",
-        [activityName, userId, emisorName]
-    );
 
     return { emisorName, activityId, activityName };
 };

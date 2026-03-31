@@ -44,6 +44,8 @@ class GeminiService {
     - TOTAL (Importe total incluyendo IVA y Recargo)
 
     IMPORTANTE: En algunas facturas como las de "Logista", el Recargo de Equivalencia (R.EQ.) y el IVA están en columnas. Busca la suma debajo de estas columnas.
+    REGLA MURSHE: En las facturas de "Distribuciones Murshe S.L", el Nº Factura está justo debajo del nombre y tiene el formato "XX / XXXXXXXX" (ejemplo: 26 / 26011494). Extráelo completo.
+    REGLA PRODUCTOS LOGISTA: Si el emisor es "LOGISTA, S.A.U." y la factura contiene productos con las palabras: "WAKA", "PABLO", "BLU" o "BLUKIT", marca el campo "especial_logista" como true.
     
     Devuelve los datos estrictamente en formato JSON con estas claves exactas:
     {
@@ -54,7 +56,8 @@ class GeminiService {
       "iva": 0.0,
       "r_eq": 0.0,
       "total_impuestos": 0.0,
-      "total": 0.0
+      "total": 0.0,
+      "especial_logista": false
     }
 
     NOTAS:
