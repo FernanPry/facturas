@@ -307,6 +307,17 @@ const updateInvoiceOtherExpense = async (userId, invoiceId, value) => {
     return res.rows[0];
 };
 
+/**
+ * Actualizar el campo actividad de una factura individual
+ */
+const updateInvoiceActivity = async (userId, invoiceId, activityName) => {
+    const res = await query(
+        "UPDATE invoices SET actividad = $1 WHERE id = $2 AND user_id = $3 RETURNING *",
+        [activityName, invoiceId, userId]
+    );
+    return res.rows[0];
+};
+
 module.exports = {
     query,
     findUserByTelegramId,
@@ -323,5 +334,6 @@ module.exports = {
     updateActivity,
     getUserIssuers,
     linkIssuerToActivity,
-    updateInvoiceOtherExpense
+    updateInvoiceOtherExpense,
+    updateInvoiceActivity
 };

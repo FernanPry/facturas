@@ -15,6 +15,12 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
@@ -79,6 +85,8 @@ function App() {
                   onTabChange={setActiveTab}
                   onLogout={handleLogout}
                   user={user}
+                  theme={theme}
+                  setTheme={setTheme}
                 />
                 <main className="main-content">
                   <header className="mb-6 flex justify-between items-center">

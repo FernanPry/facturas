@@ -110,10 +110,10 @@ export default function Activities({ apiBase }) {
             <div className="card">
                 <div className="flex justify-between items-center mb-6">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                        <div className="p-2 primary-soft text-primary rounded-lg">
                             <Briefcase size={20} />
                         </div>
-                        <h2 className="text-xl font-bold text-slate-800">Tus Actividades</h2>
+                        <h2 className="text-xl font-bold text-main">Tus Actividades</h2>
                     </div>
                     <button onClick={handleAddActivity} className="btn btn-primary flex items-center gap-2">
                         <Plus size={18} />
@@ -123,15 +123,15 @@ export default function Activities({ apiBase }) {
 
                 <div className="grid gap-4">
                     {activities.length > 0 ? activities.map((act) => (
-                        <div key={act.id} className="p-4 border rounded-xl bg-slate-50/50 flex flex-col md:flex-row gap-4 items-start md:items-center">
+                        <div key={act.id} className="p-4 border rounded-xl bg-secondary/50 flex flex-col md:flex-row gap-4 items-start md:items-center">
                             <div className="flex-1 w-full">
                                 <input 
-                                    className="text-lg font-bold bg-transparent border-none focus:ring-0 w-full mb-1 text-slate-800"
+                                    className="text-lg font-bold bg-transparent border-none focus:ring-0 w-full mb-1 text-main"
                                     value={act.name}
                                     onChange={(e) => setActivities(activities.map(a => a.id === act.id ? {...a, name: e.target.value} : a))}
                                     placeholder="Nombre de la actividad"
                                 />
-                                <div className="flex items-center gap-2 text-slate-500">
+                                <div className="flex items-center gap-2 text-muted">
                                     <Info size={14} />
                                     <input 
                                         className="text-sm bg-transparent border-none focus:ring-0 w-full italic"
@@ -152,8 +152,8 @@ export default function Activities({ apiBase }) {
                             </button>
                         </div>
                     )) : (
-                        <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-300">
-                            <p className="text-slate-500">No tienes actividades creadas. Pulsa el botón para empezar.</p>
+                        <div className="text-center py-12 bg-secondary rounded-xl border border-dashed border">
+                            <p className="text-muted">No tienes actividades creadas. Pulsa el botón para empezar.</p>
                         </div>
                     )}
                 </div>
@@ -166,8 +166,8 @@ export default function Activities({ apiBase }) {
                         <Building2 size={20} />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold text-slate-800">Relación Emisores-Actividad</h2>
-                        <p className="text-sm text-slate-500">Asigna cada emisor a una de tus actividades económicas.</p>
+                        <h2 className="text-xl font-bold text-main">Relación Emisores-Actividad</h2>
+                        <p className="text-sm text-muted">Asigna cada emisor a una de tus actividades económicas.</p>
                     </div>
                 </div>
 
@@ -175,13 +175,13 @@ export default function Activities({ apiBase }) {
                     <table className="w-full">
                         <thead>
                             <tr className="border-b">
-                                <th className="text-left py-4 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Emisor</th>
-                                <th className="text-left py-4 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actividad Asignada</th>
+                                <th className="text-left py-4 px-4 text-xs font-semibold text-muted uppercase tracking-wider">Emisor</th>
+                                <th className="text-left py-4 px-4 text-xs font-semibold text-muted uppercase tracking-wider">Actividad Asignada</th>
                             </tr>
                         </thead>
                         <tbody>
                             {issuers.map((iss) => (
-                                <tr key={iss.name} className="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
+                                <tr key={iss.name} className="border-b last:border-0 hover:bg-secondary/50 transition-colors">
                                     <td className="py-4 px-4 font-medium text-slate-700">{iss.name}</td>
                                     <td className="py-4 px-4">
                                         <select 
@@ -199,7 +199,7 @@ export default function Activities({ apiBase }) {
                             ))}
                             {issuers.length === 0 && (
                                 <tr>
-                                    <td colSpan="2" className="py-12 text-center text-slate-500">
+                                    <td colSpan="2" className="py-12 text-center text-muted">
                                         No se han detectado emisores aún. Sube algunas facturas primero.
                                     </td>
                                 </tr>

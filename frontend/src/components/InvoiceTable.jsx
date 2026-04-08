@@ -132,7 +132,7 @@ export default function InvoiceTable({
 
                 <div className="flex flex-wrap items-end gap-4 p-4" style={{ background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
                     <div style={{ flex: '0 0 160px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>OTRO GASTO</label>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>OTRO GASTO</label>
                         <select
                             className="input-minimal"
                             value={otherExpenseFilter}
@@ -146,7 +146,7 @@ export default function InvoiceTable({
                     </div>
 
                     <div style={{ flex: '1 1 250px', position: 'relative' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>BUSCAR EMISOR</label>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>BUSCAR EMISOR</label>
                         <div style={{ position: 'relative' }}>
                             <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
                             <input
@@ -161,7 +161,7 @@ export default function InvoiceTable({
                     </div>
 
                     <div style={{ flex: '0 0 160px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>DESDE</label>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>DESDE</label>
                         <input
                             type="date"
                             className="input-minimal"
@@ -172,7 +172,7 @@ export default function InvoiceTable({
                     </div>
 
                     <div style={{ flex: '0 0 160px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>HASTA</label>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>HASTA</label>
                         <input
                             type="date"
                             className="input-minimal"
@@ -183,7 +183,7 @@ export default function InvoiceTable({
                     </div>
 
                     <div style={{ flex: '1 1 160px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>ACTIVIDAD</label>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>ACTIVIDAD</label>
                         <select
                             className="input-minimal"
                             value={activityFilter}
@@ -205,7 +205,7 @@ export default function InvoiceTable({
                                 padding: '0.6rem 1.25rem',
                                 border: '1px solid var(--primary)',
                                 color: 'var(--primary)',
-                                background: 'transparent',
+                                background: 'var(--bg-main)',
                                 height: 'fit-content'
                             }}
                         >
@@ -232,8 +232,8 @@ export default function InvoiceTable({
                     <tbody>
                         {paginatedInvoices.length > 0 ? paginatedInvoices.map((inv) => {
                             const rowStyle = {
-                                background: inv.is_other_expense ? '#fff1f2' : 'transparent',
-                                transition: 'background 0.2s'
+                                background: inv.is_other_expense ? 'var(--bg-expense)' : 'transparent',
+                                transition: 'background 0.3s ease'
                             };
 
                             const handleToggleOtherExpense = async (e) => {
@@ -259,6 +259,26 @@ export default function InvoiceTable({
                                 }
                             };
 
+                            const handleActivityChange = async (e) => {
+                                const newActivity = e.target.value;
+                                try {
+                                    const token = localStorage.getItem('token');
+                                    const res = await fetch(`${apiBase}/invoices/${inv.id}/activity`, {
+                                        method: 'PUT',
+                                        headers: { 
+                                            'Authorization': `Bearer ${token}`,
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({ activityName: newActivity })
+                                    });
+                                    if (res.ok) {
+                                        window.location.reload(); 
+                                    }
+                                } catch (err) {
+                                    console.error("Error updating activity:", err);
+                                }
+                            };
+
                             return (
                                 <tr key={inv.id} style={rowStyle}>
                                     <td style={{ textAlign: 'center' }}>
@@ -271,22 +291,43 @@ export default function InvoiceTable({
                                     </td>
                                     <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{inv.emisor}</td>
                                     <td style={{ whiteSpace: 'nowrap' }}>{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : '---'}</td>
-                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{inv.actividad || 'Sin asignar'}</td>
+                                    <td>
+                                        <select 
+                                            value={inv.actividad || ''} 
+                                            onChange={handleActivityChange}
+                                            style={{
+                                                fontSize: '0.8rem',
+                                                padding: '0.2rem 0.4rem',
+                                                borderRadius: '4px',
+                                                border: '1px solid var(--border)',
+                                                background: 'var(--bg-main)',
+                                                color: 'var(--text-main)',
+                                                cursor: 'pointer',
+                                                width: '100%',
+                                                maxWidth: '150px'
+                                            }}
+                                        >
+                                            <option value="">Sin asignar</option>
+                                            {activities.map(act => (
+                                                <option key={act.id} value={act.name}>{act.name}</option>
+                                            ))}
+                                        </select>
+                                    </td>
                                     <td><code style={{
-                                        background: inv.is_other_expense ? '#ffe4e6' : 'var(--bg-secondary)',
+                                        background: inv.is_other_expense ?  'var(--bg-expense-badge)' : 'var(--bg-secondary)',
                                         padding: '0.2rem 0.5rem',
                                         borderRadius: '4px',
                                         border: '1px solid var(--border)',
                                         fontSize: '0.8rem'
                                     }}>{inv.reference}</code></td>
-                                    <td style={{ fontWeight: 700, color: inv.is_other_expense ? '#991b1b' : 'var(--primary)' }}>{inv.total}€</td>
+                                    <td style={{ fontWeight: 700, color: inv.is_other_expense ?  'var(--text-expense)' : 'var(--primary)' }}>{inv.total}€</td>
                                     <td>
                                         <span style={{
                                             fontSize: '0.7rem',
                                             padding: '0.2rem 0.5rem',
                                             borderRadius: '10px',
-                                            background: inv.ingestion_channel === 'telegram' ? '#0088cc44' : '#ea433544',
-                                            color: inv.ingestion_channel === 'telegram' ? '#0088cc' : '#ea4335',
+                                            background: inv.ingestion_channel === 'telegram' ?  'var(--bg-telegram)' :  'var(--bg-web)',
+                                            color: inv.ingestion_channel === 'telegram' ?  'var(--text-telegram)' :  'var(--text-web)',
                                             textTransform: 'uppercase',
                                             fontWeight: 700
                                         }}>
@@ -350,7 +391,7 @@ export default function InvoiceTable({
                                             <button
                                                 onClick={() => handleDelete(inv.id, inv.emisor)}
                                                 style={{
-                                                    background: 'transparent',
+                                                    background: 'var(--bg-main)',
                                                     border: 'none',
                                                     cursor: 'pointer',
                                                     fontSize: '1rem',

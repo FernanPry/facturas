@@ -348,6 +348,22 @@ app.put("/api/invoices/:id/other-expense", async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+app.put("/api/invoices/:id/activity", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { activityName } = req.body;
+        const userId = req.user.id;
+
+        const updated = await db.updateInvoiceActivity(userId, id, activityName);
+        if (!updated) {
+            return res.status(404).json({ error: "Factura no encontrada" });
+        }
+        res.json(updated);
+    } catch (error) {
+        console.error("Error updating invoice activity:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 app.get("/api/profile", async (req, res) => {
     try {

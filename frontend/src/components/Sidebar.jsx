@@ -6,10 +6,12 @@ import {
     LogOut,
     Settings,
     Plus,
-    Briefcase
+    Briefcase,
+    Sun,
+    Moon
 } from 'lucide-react';
 
-const Sidebar = ({ activeTab, onTabChange, onLogout, user }) => {
+const Sidebar = ({ activeTab, onTabChange, onLogout, user, theme, setTheme }) => {
     const menuItems = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'upload', label: 'Subir Facturas', icon: Plus },
@@ -41,12 +43,23 @@ const Sidebar = ({ activeTab, onTabChange, onLogout, user }) => {
             </div>
 
             <div className="sidebar-footer mt-auto pt-6 border-t border-white/5 space-y-4">
-                <div className="px-2 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 border border-white/10"></div>
-                    <div className="flex flex-col overflow-hidden">
-                        <span className="text-sm font-medium truncate">{user?.name || 'Usuario'}</span>
-                        <span className="text-[10px] text-muted truncate">{user?.email}</span>
+                <div className="px-2 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">
+                            {user?.name?.charAt(0) || 'U'}
+                        </div>
+                        <div className="flex flex-col overflow-hidden">
+                            <span className="text-sm font-medium truncate text-main">{user?.name || 'Usuario'}</span>
+                            <span className="text-[10px] text-muted truncate">{user?.email}</span>
+                        </div>
                     </div>
+                    <button 
+                        onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                        className="p-2 rounded-lg hover:bg-secondary text-muted hover:text-primary transition-colors"
+                        title={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
+                    >
+                        {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+                    </button>
                 </div>
 
                 <button
