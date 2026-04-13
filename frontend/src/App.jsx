@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
-import Profile from './components/Profile';
 import LandingPage from './pages/LandingPage';
 import Auth from './pages/Auth';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -93,20 +92,17 @@ function App() {
                     <div>
                       <h1 className="gradient-text" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
                         {activeTab === 'dashboard' ? 'Facturas' :
-                          activeTab === 'profile' ? 'Configuración de Perfil' : 
                           activeTab === 'upload' ? 'Subir Facturas' :
-                          activeTab === 'activities' ? 'Configuración de Actividades' : 'Ajustes de Cuenta'}
+                          activeTab === 'activities' ? 'Configuración de Actividades' : 'Ajustes y Configuración'}
                       </h1>
                       <p style={{ color: 'var(--text-muted)' }}>
                         {activeTab === 'dashboard'
                           ? 'Gestiona y visualiza tus facturas procesadas por IA'
-                          : activeTab === 'profile'
-                            ? 'Personaliza tus datos de facturación y canales de ingesta'
-                            : activeTab === 'upload'
-                              ? 'Carga manualmente una factura desde tu PC para procesarla por IA'
+                          : activeTab === 'upload'
+                            ? 'Carga manualmente una factura desde tu PC para procesarla por IA'
                             : activeTab === 'activities'
                               ? 'Relaciona tus emisores con actividades económicas específicas'
-                              : 'Gestiona tus credenciales de acceso y seguridad'}
+                              : 'Configura tus datos de facturación, canales de ingesta y credenciales'}
                       </p>
                     </div>
                     <div className="user-profile-badge">
@@ -115,9 +111,6 @@ function App() {
                   </header>
 
                   {activeTab === 'dashboard' && <Dashboard apiBase={API_BASE} user={user} />}
-                  {activeTab === 'profile' && (
-                    <Profile user={user} setUser={setUser} apiBase={API_BASE} />
-                  )}
                   {activeTab === 'settings' && (
                     <Settings user={user} setUser={setUser} apiBase={API_BASE} />
                   )}

@@ -8,15 +8,15 @@ import {
     Plus,
     Briefcase,
     Sun,
-    Moon
+    Moon,
+    History
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, onTabChange, onLogout, user, theme, setTheme }) => {
     const menuItems = [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'dashboard', label: 'Historial', icon: History },
         { id: 'upload', label: 'Subir Facturas', icon: Plus },
         { id: 'activities', label: 'Actividades', icon: Briefcase },
-        { id: 'profile', label: 'Perfil', icon: User },
         { id: 'settings', label: 'Ajustes', icon: Settings },
     ];
 

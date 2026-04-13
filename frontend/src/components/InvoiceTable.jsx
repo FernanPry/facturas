@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 
 export default function InvoiceTable({
     invoices,
@@ -14,12 +14,16 @@ export default function InvoiceTable({
     setOtherExpenseFilter,
     activityFilter,
     setActivityFilter,
-    apiBase
+    apiBase,
+    isQuarterFilterActive,
+    setIsQuarterFilterActive,
+    currentQuarterDates
 }) {
     // Paginación
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
     const [activities, setActivities] = useState([]);
+    const [expandedInvoiceId, setExpandedInvoiceId] = useState(null);
 
     // Cargar actividades para el filtro
     useEffect(() => {
@@ -88,16 +92,22 @@ export default function InvoiceTable({
         const dataToExport = filteredInvoices;
         if (dataToExport.length === 0) return;
 
-        const headers = ["Emisor", "Fecha", "Actividad", "Otros Gastos", "Referencia", "Total", "Canal"];
+        // Cabeceras (siempre incluimos las columnas de impuestos para evitar confusión)
+        const headers = ["Emisor", "Fecha", "Actividad", "Exportar IVA", "Nº Factura", "Total", "Subtotal", "IVA", "Recargo Equi.", "Total Impuestos"];
+        
         const rows = dataToExport.map(inv => [
             inv.emisor,
-            inv.invoice_date,
+            inv.invoice_date ? new Date(inv.invoice_date).toISOString().split('T')[0] : '---',
             inv.actividad || "Sin asignar",
             inv.is_other_expense ? "Sí" : "No",
-            inv.reference,
+            inv.reference ? `="${inv.reference}"` : '---',
             inv.total,
-            inv.ingestion_channel
+            inv.is_other_expense ? (inv.subtotal || 0) : '',
+            inv.is_other_expense ? (inv.iva || 0) : '',
+            inv.is_other_expense ? (inv.r_eq || 0) : '',
+            inv.is_other_expense ? (inv.total_taxes || 0) : ''
         ]);
+
         const csvContent = [headers.join(";"), ...rows.map(row => row.join(";"))].join("\n");
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
@@ -116,6 +126,7 @@ export default function InvoiceTable({
         setEndDate('');
         setOtherExpenseFilter('all');
         setActivityFilter('all');
+        setIsQuarterFilterActive(false); // Al limpiar filtros, quitamos el auto-filtro para ver todo
     };
 
     const hasFilters = filterTerm || startDate || endDate || otherExpenseFilter !== 'all' || activityFilter !== 'all';
@@ -131,8 +142,9 @@ export default function InvoiceTable({
                 </div>
 
                 <div className="flex flex-wrap items-end gap-4 p-4" style={{ background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
+
                     <div style={{ flex: '0 0 160px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>OTRO GASTO</label>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>EXPORTAR IVA</label>
                         <select
                             className="input-minimal"
                             value={otherExpenseFilter}
@@ -140,8 +152,8 @@ export default function InvoiceTable({
                             style={{ width: '100%', cursor: 'pointer' }}
                         >
                             <option value="all">Todos</option>
-                            <option value="yes">Sí (Otros)</option>
-                            <option value="no">No (Ordinarios)</option>
+                            <option value="yes">Sí</option>
+                            <option value="no">No</option>
                         </select>
                     </div>
 
@@ -160,27 +172,62 @@ export default function InvoiceTable({
                         </div>
                     </div>
 
-                    <div style={{ flex: '0 0 160px' }}>
+                    <div style={{ flex: '0 0 160px', opacity: isQuarterFilterActive ? 0.6 : 1, transition: 'opacity 0.3s ease' }}>
                         <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>DESDE</label>
                         <input
                             type="date"
                             className="input-minimal"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            style={{ width: '100%' }}
+                            value={isQuarterFilterActive ? currentQuarterDates.start : startDate}
+                            onChange={(e) => {
+                                setStartDate(e.target.value);
+                                if (isQuarterFilterActive) setIsQuarterFilterActive(false);
+                            }}
+                            style={{ width: '100%', cursor: isQuarterFilterActive ? 'not-allowed' : 'text' }}
+                            disabled={isQuarterFilterActive}
                         />
                     </div>
 
-                    <div style={{ flex: '0 0 160px' }}>
+                    <div style={{ flex: '0 0 160px', opacity: isQuarterFilterActive ? 0.6 : 1, transition: 'opacity 0.3s ease' }}>
                         <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>HASTA</label>
                         <input
                             type="date"
                             className="input-minimal"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            style={{ width: '100%' }}
+                            value={isQuarterFilterActive ? currentQuarterDates.end : endDate}
+                            onChange={(e) => {
+                                setEndDate(e.target.value);
+                                if (isQuarterFilterActive) setIsQuarterFilterActive(false);
+                            }}
+                            style={{ width: '100%', cursor: isQuarterFilterActive ? 'not-allowed' : 'text' }}
+                            disabled={isQuarterFilterActive}
                         />
                     </div>
+                    {/* Toggle Trimestre Actual */}
+                    <div style={{ flex: '0 0 auto' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>AUTO-FILTRO</label>
+                        <button
+                            onClick={() => setIsQuarterFilterActive(!isQuarterFilterActive)}
+                            className={`btn ${isQuarterFilterActive ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{
+                                height: '42px',
+                                padding: '0 1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                borderColor: isQuarterFilterActive ? 'var(--primary)' : 'var(--border)',
+                                background: isQuarterFilterActive ? 'var(--primary)' : 'var(--bg-main)',
+                                color: isQuarterFilterActive ? 'white' : 'var(--text-main)',
+                                fontWeight: 600,
+                                fontSize: '0.8rem',
+                                transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+                            }}
+                            title="Filtrar automáticamente por el trimestre actual"
+                        >
+                            <span style={{ fontSize: '1.1rem' }}>📅</span>
+                            <span style={{ whiteSpace: 'nowrap' }}>Trimestre Actual</span>
+                            {isQuarterFilterActive && <span style={{ fontSize: '1.2rem', marginLeft: '4px', animation: 'fadeIn 0.3s ease' }}>✓</span>}
+                        </button>
+                    </div>
+
 
                     <div style={{ flex: '1 1 160px' }}>
                         <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>ACTIVIDAD</label>
@@ -219,7 +266,7 @@ export default function InvoiceTable({
                 <table style={{ minWidth: '850px' }}>
                     <thead>
                         <tr>
-                            <th style={{ width: '8%', fontSize: '0.65rem', lineHeight: '1.1', textAlign: 'center' }}>Otros gastos<br/>explotación</th>
+                            <th style={{ width: '8%', fontSize: '0.65rem', lineHeight: '1.1', textAlign: 'center' }}>Exportar<br/>IVA</th>
                             <th style={{ width: '18%' }}>Emisor</th>
                             <th style={{ width: '12%' }}>Fecha</th>
                             <th style={{ width: '15%' }}>Actividad</th>
@@ -230,186 +277,242 @@ export default function InvoiceTable({
                         </tr>
                     </thead>
                     <tbody>
-                        {paginatedInvoices.length > 0 ? paginatedInvoices.map((inv) => {
-                            const rowStyle = {
-                                background: inv.is_other_expense ? 'var(--bg-expense)' : 'transparent',
-                                transition: 'background 0.3s ease'
-                            };
+                        {paginatedInvoices.length > 0 ? (
+                            paginatedInvoices.map((inv) => {
+                                const rowStyle = {
+                                    background: inv.is_other_expense ? 'var(--bg-expense)' : 'transparent',
+                                    transition: 'background 0.3s ease'
+                                };
 
-                            const handleToggleOtherExpense = async (e) => {
-                                const newValue = e.target.checked;
-                                try {
-                                    const token = localStorage.getItem('token');
-                                    const res = await fetch(`${apiBase}/invoices/${inv.id}/other-expense`, {
-                                        method: 'PUT',
-                                        headers: { 
-                                            'Authorization': `Bearer ${token}`,
-                                            'Content-Type': 'application/json'
-                                        },
-                                        body: JSON.stringify({ value: newValue })
-                                    });
-                                    if (res.ok) {
-                                        // Actualizar estado local para feedback inmediato
-                                        inv.is_other_expense = newValue;
-                                        // Forzar re-render (truco rápido para este componente que usa props)
-                                        window.location.reload(); 
+                                const handleToggleOtherExpense = async (e) => {
+                                    const newValue = e.target.checked;
+                                    try {
+                                        const token = localStorage.getItem('token');
+                                        const res = await fetch(`${apiBase}/invoices/${inv.id}/other-expense`, {
+                                            method: 'PUT',
+                                            headers: { 
+                                                'Authorization': `Bearer ${token}`,
+                                                'Content-Type': 'application/json'
+                                            },
+                                            body: JSON.stringify({ value: newValue })
+                                        });
+                                        if (res.ok) {
+                                            inv.is_other_expense = newValue;
+                                            window.location.reload(); 
+                                        }
+                                    } catch (err) {
+                                        console.error("Error updating other expense:", err);
                                     }
-                                } catch (err) {
-                                    console.error("Error updating other expense:", err);
-                                }
-                            };
+                                };
 
-                            const handleActivityChange = async (e) => {
-                                const newActivity = e.target.value;
-                                try {
-                                    const token = localStorage.getItem('token');
-                                    const res = await fetch(`${apiBase}/invoices/${inv.id}/activity`, {
-                                        method: 'PUT',
-                                        headers: { 
-                                            'Authorization': `Bearer ${token}`,
-                                            'Content-Type': 'application/json'
-                                        },
-                                        body: JSON.stringify({ activityName: newActivity })
-                                    });
-                                    if (res.ok) {
-                                        window.location.reload(); 
+                                const handleActivityChange = async (e) => {
+                                    const newActivity = e.target.value;
+                                    try {
+                                        const token = localStorage.getItem('token');
+                                        const res = await fetch(`${apiBase}/invoices/${inv.id}/activity`, {
+                                            method: 'PUT',
+                                            headers: { 
+                                                'Authorization': `Bearer ${token}`,
+                                                'Content-Type': 'application/json'
+                                            },
+                                            body: JSON.stringify({ activityName: newActivity })
+                                        });
+                                        if (res.ok) {
+                                            window.location.reload(); 
+                                        }
+                                    } catch (err) {
+                                        console.error("Error updating activity:", err);
                                     }
-                                } catch (err) {
-                                    console.error("Error updating activity:", err);
-                                }
-                            };
+                                };
 
-                            return (
-                                <tr key={inv.id} style={rowStyle}>
-                                    <td style={{ textAlign: 'center' }}>
-                                        <input 
-                                            type="checkbox" 
-                                            checked={!!inv.is_other_expense}
-                                            onChange={handleToggleOtherExpense}
-                                            style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                                        />
-                                    </td>
-                                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{inv.emisor}</td>
-                                    <td style={{ whiteSpace: 'nowrap' }}>{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : '---'}</td>
-                                    <td>
-                                        <select 
-                                            value={inv.actividad || ''} 
-                                            onChange={handleActivityChange}
-                                            style={{
-                                                fontSize: '0.8rem',
-                                                padding: '0.2rem 0.4rem',
-                                                borderRadius: '4px',
-                                                border: '1px solid var(--border)',
-                                                background: 'var(--bg-main)',
-                                                color: 'var(--text-main)',
-                                                cursor: 'pointer',
-                                                width: '100%',
-                                                maxWidth: '150px'
-                                            }}
-                                        >
-                                            <option value="">Sin asignar</option>
-                                            {activities.map(act => (
-                                                <option key={act.id} value={act.name}>{act.name}</option>
-                                            ))}
-                                        </select>
-                                    </td>
-                                    <td><code style={{
-                                        background: inv.is_other_expense ?  'var(--bg-expense-badge)' : 'var(--bg-secondary)',
-                                        padding: '0.2rem 0.5rem',
-                                        borderRadius: '4px',
-                                        border: '1px solid var(--border)',
-                                        fontSize: '0.8rem'
-                                    }}>{inv.reference}</code></td>
-                                    <td style={{ fontWeight: 700, color: inv.is_other_expense ?  'var(--text-expense)' : 'var(--primary)' }}>{inv.total}€</td>
-                                    <td>
-                                        <span style={{
-                                            fontSize: '0.7rem',
-                                            padding: '0.2rem 0.5rem',
-                                            borderRadius: '10px',
-                                            background: inv.ingestion_channel === 'telegram' ?  'var(--bg-telegram)' :  'var(--bg-web)',
-                                            color: inv.ingestion_channel === 'telegram' ?  'var(--text-telegram)' :  'var(--text-web)',
-                                            textTransform: 'uppercase',
-                                            fontWeight: 700
-                                        }}>
-                                            {inv.ingestion_channel}
-                                        </span>
-                                    </td>
-                                    <td style={{ textAlign: 'center' }}>
-                                        <div className="flex gap-3 justify-center items-center">
-                                            {inv.file_path && (
-                                                <button
-                                                    onClick={async () => {
-                                                        try {
-                                                            const token = localStorage.getItem('token');
-                                                            const response = await fetch(`${apiBase}/invoices/download/${inv.id}`, {
-                                                                headers: { 'Authorization': `Bearer ${token}` }
-                                                            });
-                                                            if (!response.ok) throw new Error('Error al descargar');
-                                                            
-                                                            const blob = await response.blob();
-                                                            const url = window.URL.createObjectURL(blob);
-                                                            const a = document.createElement('a');
-                                                            a.href = url;
-                                                            a.download = `${inv.emisor}-${inv.reference || inv.id}.pdf`;
-                                                            document.body.appendChild(a);
-                                                            a.click();
-                                                            a.remove();
-                                                            window.URL.revokeObjectURL(url);
-                                                        } catch (err) {
-                                                            alert("No se pudo descargar el archivo.");
-                                                            console.error(err);
-                                                        }
-                                                    }}
+                                const isExpanded = expandedInvoiceId === inv.id;
+                                
+                                const toggleExpand = () => {
+                                    setExpandedInvoiceId(isExpanded ? null : inv.id);
+                                };
+
+                                return (
+                                    <Fragment key={inv.id}>
+                                        <tr style={rowStyle}>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={!!inv.is_other_expense}
+                                                    onChange={handleToggleOtherExpense}
+                                                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                                                />
+                                            </td>
+                                            <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{inv.emisor}</td>
+                                            <td style={{ whiteSpace: 'nowrap' }}>{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : '---'}</td>
+                                            <td>
+                                                <select 
+                                                    value={inv.actividad || ''} 
+                                                    onChange={handleActivityChange}
                                                     style={{
-                                                        border: 'none',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
                                                         fontSize: '0.8rem',
-                                                        fontWeight: 600,
-                                                        color: 'var(--primary)',
-                                                        background: 'var(--primary-light)',
-                                                        padding: '0.2rem 0.5rem',
-                                                        borderRadius: '6px',
-                                                        transition: 'all 0.2s',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                    title="Descargar factura original"
-                                                    onMouseOver={(e) => {
-                                                        e.currentTarget.style.transform = 'translateY(-1px)';
-                                                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-                                                    }}
-                                                    onMouseOut={(e) => {
-                                                        e.currentTarget.style.transform = 'translateY(0)';
-                                                        e.currentTarget.style.boxShadow = 'none';
+                                                        padding: '0.2rem 0.4rem',
+                                                        borderRadius: '4px',
+                                                        border: '1px solid var(--border)',
+                                                        background: 'var(--bg-main)',
+                                                        color: 'var(--text-main)',
+                                                        cursor: 'pointer',
+                                                        width: '100%',
+                                                        maxWidth: '150px'
                                                     }}
                                                 >
-                                                    <span>📥</span>
-                                                    <span>Descargar</span>
-                                                </button>
-                                            )}
-                                            <button
-                                                onClick={() => handleDelete(inv.id, inv.emisor)}
-                                                style={{
-                                                    background: 'var(--bg-main)',
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                    fontSize: '1rem',
-                                                    opacity: 0.6,
-                                                    transition: 'opacity 0.2s',
-                                                    padding: '4px'
-                                                }}
-                                                title="Eliminar factura"
-                                                onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
-                                                onMouseOut={(e) => e.currentTarget.style.opacity = '0.6'}
-                                            >
-                                                🗑️
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        }) : (
+                                                    <option value="">Sin asignar</option>
+                                                    {activities.map(act => (
+                                                        <option key={act.id} value={act.name}>{act.name}</option>
+                                                    ))}
+                                                </select>
+                                            </td>
+                                            <td><code style={{
+                                                background: inv.is_other_expense ?  'var(--bg-expense-badge)' : 'var(--bg-secondary)',
+                                                padding: '0.2rem 0.5rem',
+                                                borderRadius: '4px',
+                                                border: '1px solid var(--border)',
+                                                fontSize: '0.8rem'
+                                            }}>{inv.reference}</code></td>
+                                            <td style={{ fontWeight: 700, color: inv.is_other_expense ?  'var(--text-expense)' : 'var(--primary)' }}>{inv.total}€</td>
+                                            <td>
+                                                <span style={{
+                                                    fontSize: '0.7rem',
+                                                    padding: '0.2rem 0.5rem',
+                                                    borderRadius: '10px',
+                                                    background: inv.ingestion_channel === 'telegram' ?  'var(--bg-telegram)' :  'var(--bg-web)',
+                                                    color: inv.ingestion_channel === 'telegram' ?  'var(--text-telegram)' :  'var(--text-web)',
+                                                    textTransform: 'uppercase',
+                                                    fontWeight: 700
+                                                }}>
+                                                    {inv.ingestion_channel}
+                                                </span>
+                                            </td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <div className="flex gap-3 justify-center items-center">
+                                                    <button
+                                                        onClick={toggleExpand}
+                                                        style={{
+                                                            border: 'none',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                            fontSize: '0.8rem',
+                                                            fontWeight: 600,
+                                                            color: isExpanded ? 'white' : 'var(--text-muted)',
+                                                            background: isExpanded ? 'var(--primary)' : 'var(--bg-secondary)',
+                                                            padding: '0.2rem 0.5rem',
+                                                            borderRadius: '6px',
+                                                            transition: 'all 0.2s',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                        title={isExpanded ? "Ocultar detalles" : "Ver más detalles"}
+                                                    >
+                                                        <span style={{ 
+                                                            display: 'inline-flex', 
+                                                            transition: 'transform 0.2s ease', 
+                                                            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' 
+                                                        }}>
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                                <polyline points="6 9 12 15 18 9"></polyline>
+                                                            </svg>
+                                                        </span>
+                                                        <span className="hidden md:inline">Detalles</span>
+                                                    </button>
+                                                    
+                                                    {inv.file_path && (
+                                                        <button
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const token = localStorage.getItem('token');
+                                                                    const response = await fetch(`${apiBase}/invoices/download/${inv.id}`, {
+                                                                        headers: { 'Authorization': `Bearer ${token}` }
+                                                                    });
+                                                                    if (!response.ok) throw new Error('Error al descargar');
+                                                                    
+                                                                    const blob = await response.blob();
+                                                                    const url = window.URL.createObjectURL(blob);
+                                                                    const a = document.createElement('a');
+                                                                    a.href = url;
+                                                                    a.download = `${inv.emisor}-${inv.reference || inv.id}.pdf`;
+                                                                    document.body.appendChild(a);
+                                                                    a.click();
+                                                                    a.remove();
+                                                                    window.URL.revokeObjectURL(url);
+                                                                } catch (err) {
+                                                                    alert("No se pudo descargar el archivo.");
+                                                                    console.error(err);
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                border: 'none',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px',
+                                                                fontSize: '0.8rem',
+                                                                fontWeight: 600,
+                                                                color: 'var(--primary)',
+                                                                background: 'var(--primary-soft)',
+                                                                padding: '0.2rem 0.5rem',
+                                                                borderRadius: '6px',
+                                                                transition: 'all 0.2s',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                            title="Descargar factura original"
+                                                        >
+                                                            <span>📥</span>
+                                                            <span className="hidden md:inline">Descargar</span>
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleDelete(inv.id, inv.emisor)}
+                                                        style={{
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            cursor: 'pointer',
+                                                            fontSize: '1rem',
+                                                            opacity: 0.6,
+                                                            transition: 'opacity 0.2s',
+                                                            padding: '4px'
+                                                        }}
+                                                        title="Eliminar factura"
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {isExpanded && (
+                                            <tr style={{ background: 'var(--bg-secondary)', borderLeft: '4px solid var(--primary)', transition: 'all 0.3s ease' }}>
+                                                <td colSpan="8" style={{ padding: '1.5rem 2.5rem' }}>
+                                                    <div className="flex flex-wrap gap-8 items-start">
+                                                        <div className="flex flex-col gap-1">
+                                                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Subtotal</span>
+                                                            <span style={{ fontSize: '1rem', fontWeight: 700 }}>{inv.subtotal || 0}€</span>
+                                                        </div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>IVA</span>
+                                                            <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--primary)' }}>{inv.iva || 0}€</span>
+                                                        </div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Recargo Equiv. (R.EQ)</span>
+                                                            <span style={{ fontSize: '1rem', fontWeight: 700, color: '#8b5cf6' }}>{inv.r_eq || 0}€</span>
+                                                        </div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Impuestos</span>
+                                                            <span style={{ fontSize: '1rem', fontWeight: 700 }}>{inv.total_taxes || 0}€</span>
+                                                        </div>
+                                                        <div className="flex flex-col gap-1 ml-auto">
+                                                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Referencia Completa</span>
+                                                            <span style={{ fontSize: '0.9rem', fontFamily: 'monospace' }}>{inv.reference || 'N/A'}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </Fragment>
+                                );
+                            })
+                        ) : (
                             <tr>
                                 <td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                                     {hasFilters ? 'No se encontraron facturas para los filtros aplicados.' : 'Aún no has subido ninguna factura.'}

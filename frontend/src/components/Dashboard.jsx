@@ -13,6 +13,32 @@ export default function Dashboard({ apiBase, user }) {
     const [endDate, setEndDate] = useState('');
     const [otherExpenseFilter, setOtherExpenseFilter] = useState('all'); // 'all', 'yes', 'no'
     const [activityFilter, setActivityFilter] = useState('all'); // 'all' or activity name
+    const [isQuarterFilterActive, setIsQuarterFilterActive] = useState(true);
+
+    // Utilidad para obtener fechas del trimestre actual
+    const currentQuarterDates = useMemo(() => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const quarter = Math.floor(month / 3);
+        const startMonth = quarter * 3;
+        const endMonth = startMonth + 2;
+
+        const start = new Date(year, startMonth, 1);
+        const end = new Date(year, endMonth + 1, 0);
+
+        const formatDate = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        return {
+            start: formatDate(start),
+            end: formatDate(end)
+        };
+    }, []);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -51,6 +77,9 @@ export default function Dashboard({ apiBase, user }) {
 
     // Lógica de filtrado combinada
     const filteredInvoices = useMemo(() => {
+        const effectiveStartDate = isQuarterFilterActive ? currentQuarterDates.start : startDate;
+        const effectiveEndDate = isQuarterFilterActive ? currentQuarterDates.end : endDate;
+
         return invoices.filter(inv => {
             const matchesTerm = (inv.emisor || '').toLowerCase().includes((filterTerm || '').toLowerCase());
 
@@ -62,8 +91,8 @@ export default function Dashboard({ apiBase, user }) {
                 const d = new Date(inv.invoice_date);
                 if (!isNaN(d.getTime())) {
                     const invDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                    matchesStart = !startDate || invDateStr >= startDate;
-                    matchesEnd = !endDate || invDateStr <= endDate;
+                    matchesStart = !effectiveStartDate || invDateStr >= effectiveStartDate;
+                    matchesEnd = !effectiveEndDate || invDateStr <= effectiveEndDate;
                 }
             }
 
@@ -75,7 +104,7 @@ export default function Dashboard({ apiBase, user }) {
 
             return matchesTerm && matchesStart && matchesEnd && matchesOtherExpense && matchesActivity;
         });
-    }, [invoices, filterTerm, startDate, endDate, otherExpenseFilter, activityFilter]);
+    }, [invoices, filterTerm, startDate, endDate, otherExpenseFilter, activityFilter, isQuarterFilterActive, currentQuarterDates]);
 
     // Estadísticas calculadas dinámicamente
     const stats = useMemo(() => {
@@ -167,6 +196,9 @@ export default function Dashboard({ apiBase, user }) {
                 setOtherExpenseFilter={setOtherExpenseFilter}
                 activityFilter={activityFilter}
                 setActivityFilter={setActivityFilter}
+                isQuarterFilterActive={isQuarterFilterActive}
+                setIsQuarterFilterActive={setIsQuarterFilterActive}
+                currentQuarterDates={currentQuarterDates}
             />
         </div>
     );

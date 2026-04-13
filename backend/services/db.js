@@ -125,11 +125,6 @@ const saveInvoice = async (userId, data, channel, rawResponse, filePath = null) 
     );
     
     let activityName = mappingRes.rows.length > 0 ? mappingRes.rows[0].name : null;
-    
-    // Regla especial Logista: Si tiene productos específicos, forzar Actividad 3
-    if (emisor.toLowerCase().includes("logista") && data.especial_logista) {
-        activityName = "Actividad 3";
-    }
 
     const text = `
     INSERT INTO invoices (
@@ -297,7 +292,7 @@ const linkIssuerToActivity = async (userId, emisorName, activityId) => {
 };
 
 /**
- * Actualizar el estado de "Otros gastos explotación" de una factura
+ * Actualizar el estado de "Exportar IVA" de una factura
  */
 const updateInvoiceOtherExpense = async (userId, invoiceId, value) => {
     const res = await query(
