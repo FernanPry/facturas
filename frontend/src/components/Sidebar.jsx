@@ -9,7 +9,8 @@ import {
     Briefcase,
     Sun,
     Moon,
-    History
+    History,
+    BarChart3
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, onTabChange, onLogout, user, theme, setTheme }) => {
@@ -17,6 +18,7 @@ const Sidebar = ({ activeTab, onTabChange, onLogout, user, theme, setTheme }) =>
         { id: 'dashboard', label: 'Historial', icon: History },
         { id: 'upload', label: 'Subir Facturas', icon: Plus },
         { id: 'activities', label: 'Actividades', icon: Briefcase },
+        { id: 'finance', label: 'Análisis', icon: BarChart3 },
         { id: 'settings', label: 'Ajustes', icon: Settings },
     ];
 

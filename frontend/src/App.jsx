@@ -8,6 +8,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Settings from './components/Settings';
 import ManualUpload from './components/ManualUpload';
 import Activities from './components/Activities';
+import FinanceDashboard from './components/FinanceDashboard';
 import { API_BASE } from './config';
 
 function App() {
@@ -92,12 +93,15 @@ function App() {
                     <div>
                       <h1 className="gradient-text" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
                         {activeTab === 'dashboard' ? 'Facturas' :
+                          activeTab === 'finance' ? 'Análisis' :
                           activeTab === 'upload' ? 'Subir Facturas' :
                           activeTab === 'activities' ? 'Configuración de Actividades' : 'Ajustes y Configuración'}
                       </h1>
                       <p style={{ color: 'var(--text-muted)' }}>
                         {activeTab === 'dashboard'
                           ? 'Gestiona y visualiza tus facturas procesadas por IA'
+                          : activeTab === 'finance'
+                            ? 'Análisis BI de gastos, impuestos y canales de ingesta'
                           : activeTab === 'upload'
                             ? 'Carga manualmente una factura desde tu PC para procesarla por IA'
                             : activeTab === 'activities'
@@ -111,6 +115,7 @@ function App() {
                   </header>
 
                   {activeTab === 'dashboard' && <Dashboard apiBase={API_BASE} user={user} />}
+                  {activeTab === 'finance' && <FinanceDashboard apiBase={API_BASE} user={user} />}
                   {activeTab === 'settings' && (
                     <Settings user={user} setUser={setUser} apiBase={API_BASE} />
                   )}

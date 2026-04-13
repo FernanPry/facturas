@@ -218,7 +218,8 @@ export default function InvoiceTable({
                                 color: isQuarterFilterActive ? 'white' : 'var(--text-main)',
                                 fontWeight: 600,
                                 fontSize: '0.8rem',
-                                transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+                                transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                                marginBottom: '16px'
                             }}
                             title="Filtrar automáticamente por el trimestre actual"
                         >
@@ -253,7 +254,8 @@ export default function InvoiceTable({
                                 border: '1px solid var(--primary)',
                                 color: 'var(--primary)',
                                 background: 'var(--bg-main)',
-                                height: 'fit-content'
+                                height: 'fit-content',
+                                marginBottom: '16px'
                             }}
                         >
                             Quitar filtros
