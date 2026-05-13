@@ -12,6 +12,8 @@ export default function InvoiceTable({
     setEndDate,
     otherExpenseFilter,
     setOtherExpenseFilter,
+    invoiceTypeFilter,
+    setInvoiceTypeFilter,
     activityFilter,
     setActivityFilter,
     apiBase,
@@ -93,9 +95,10 @@ export default function InvoiceTable({
         if (dataToExport.length === 0) return;
 
         // Cabeceras (siempre incluimos las columnas de impuestos para evitar confusión)
-        const headers = ["Emisor", "Fecha", "Actividad", "Exportar IVA", "Nº Factura", "Total", "Subtotal", "IVA", "Recargo Equi.", "Total Impuestos"];
+        const headers = ["Tipo", "Emisor", "Fecha", "Actividad", "Exportar IVA", "Nº Factura", "Total", "Subtotal", "IVA", "Recargo Equi.", "Total Impuestos"];
         
         const rows = dataToExport.map(inv => [
+            (inv.invoice_type || 'expense') === 'income' ? 'Ingreso' : 'Factura recibida',
             inv.emisor,
             inv.invoice_date ? new Date(inv.invoice_date).toISOString().split('T')[0] : '---',
             inv.actividad || "Sin asignar",
@@ -125,11 +128,12 @@ export default function InvoiceTable({
         setStartDate('');
         setEndDate('');
         setOtherExpenseFilter('all');
+        setInvoiceTypeFilter('all');
         setActivityFilter('all');
         setIsQuarterFilterActive(false); // Al limpiar filtros, quitamos el auto-filtro para ver todo
     };
 
-    const hasFilters = filterTerm || startDate || endDate || otherExpenseFilter !== 'all' || activityFilter !== 'all';
+    const hasFilters = filterTerm || startDate || endDate || otherExpenseFilter !== 'all' || invoiceTypeFilter !== 'all' || activityFilter !== 'all';
 
     return (
         <div className="card" style={{ marginTop: '2rem' }}>
@@ -142,6 +146,20 @@ export default function InvoiceTable({
                 </div>
 
                 <div className="flex flex-wrap items-end gap-4 p-4" style={{ background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
+
+                    <div style={{ flex: '0 0 160px' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>TIPO</label>
+                        <select
+                            className="input-minimal"
+                            value={invoiceTypeFilter}
+                            onChange={(e) => setInvoiceTypeFilter(e.target.value)}
+                            style={{ width: '100%', cursor: 'pointer' }}
+                        >
+                            <option value="all">Todos</option>
+                            <option value="expense">Facturas recibidas</option>
+                            <option value="income">Ingresos</option>
+                        </select>
+                    </div>
 
                     <div style={{ flex: '0 0 160px' }}>
                         <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>EXPORTAR IVA</label>
@@ -269,6 +287,7 @@ export default function InvoiceTable({
                     <thead>
                         <tr>
                             <th style={{ width: '8%', fontSize: '0.65rem', lineHeight: '1.1', textAlign: 'center' }}>Exportar<br/>IVA</th>
+                            <th style={{ width: '12%' }}>Tipo</th>
                             <th style={{ width: '18%' }}>Emisor</th>
                             <th style={{ width: '12%' }}>Fecha</th>
                             <th style={{ width: '15%' }}>Actividad</th>
@@ -327,6 +346,26 @@ export default function InvoiceTable({
                                     }
                                 };
 
+                                const handleTypeChange = async (e) => {
+                                    const newType = e.target.value;
+                                    try {
+                                        const token = localStorage.getItem('token');
+                                        const res = await fetch(`${apiBase}/invoices/${inv.id}/type`, {
+                                            method: 'PUT',
+                                            headers: {
+                                                'Authorization': `Bearer ${token}`,
+                                                'Content-Type': 'application/json'
+                                            },
+                                            body: JSON.stringify({ invoiceType: newType })
+                                        });
+                                        if (res.ok) {
+                                            window.location.reload();
+                                        }
+                                    } catch (err) {
+                                        console.error("Error updating invoice type:", err);
+                                    }
+                                };
+
                                 const isExpanded = expandedInvoiceId === inv.id;
                                 
                                 const toggleExpand = () => {
@@ -343,6 +382,25 @@ export default function InvoiceTable({
                                                     onChange={handleToggleOtherExpense}
                                                     style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                                                 />
+                                            </td>
+                                            <td>
+                                                <select
+                                                    value={inv.invoice_type || 'expense'}
+                                                    onChange={handleTypeChange}
+                                                    style={{
+                                                        fontSize: '0.75rem',
+                                                        padding: '0.2rem 0.4rem',
+                                                        borderRadius: '999px',
+                                                        border: '1px solid var(--border)',
+                                                        background: (inv.invoice_type || 'expense') === 'income' ? '#dcfce7' : 'var(--bg-secondary)',
+                                                        color: (inv.invoice_type || 'expense') === 'income' ? '#166534' : 'var(--text-main)',
+                                                        cursor: 'pointer',
+                                                        width: '100%'
+                                                    }}
+                                                >
+                                                    <option value="expense">Recibida</option>
+                                                    <option value="income">Ingreso</option>
+                                                </select>
                                             </td>
                                             <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{inv.emisor}</td>
                                             <td style={{ whiteSpace: 'nowrap' }}>{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : '---'}</td>
@@ -485,7 +543,7 @@ export default function InvoiceTable({
                                         </tr>
                                         {isExpanded && (
                                             <tr style={{ background: 'var(--bg-secondary)', borderLeft: '4px solid var(--primary)', transition: 'all 0.3s ease' }}>
-                                                <td colSpan="8" style={{ padding: '1.5rem 2.5rem' }}>
+                                                <td colSpan="9" style={{ padding: '1.5rem 2.5rem' }}>
                                                     <div className="flex flex-wrap gap-8 items-start">
                                                         <div className="flex flex-col gap-1">
                                                             <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Subtotal</span>
@@ -516,7 +574,7 @@ export default function InvoiceTable({
                             })
                         ) : (
                             <tr>
-                                <td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                                <td colSpan="9" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                                     {hasFilters ? 'No se encontraron facturas para los filtros aplicados.' : 'Aún no has subido ninguna factura.'}
                                 </td>
                             </tr>

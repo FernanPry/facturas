@@ -12,6 +12,7 @@ export default function Dashboard({ apiBase, user }) {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [otherExpenseFilter, setOtherExpenseFilter] = useState('all'); // 'all', 'yes', 'no'
+    const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('all'); // 'all', 'expense', 'income'
     const [activityFilter, setActivityFilter] = useState('all'); // 'all' or activity name
     const [isQuarterFilterActive, setIsQuarterFilterActive] = useState(true);
 
@@ -101,37 +102,57 @@ export default function Dashboard({ apiBase, user }) {
                 (otherExpenseFilter === 'no' && !inv.is_other_expense);
 
             const matchesActivity = activityFilter === 'all' || inv.actividad === activityFilter;
+            const matchesInvoiceType = invoiceTypeFilter === 'all' || (inv.invoice_type || 'expense') === invoiceTypeFilter;
 
-            return matchesTerm && matchesStart && matchesEnd && matchesOtherExpense && matchesActivity;
+            return matchesTerm && matchesStart && matchesEnd && matchesOtherExpense && matchesActivity && matchesInvoiceType;
         });
-    }, [invoices, filterTerm, startDate, endDate, otherExpenseFilter, activityFilter, isQuarterFilterActive, currentQuarterDates]);
+    }, [invoices, filterTerm, startDate, endDate, otherExpenseFilter, invoiceTypeFilter, activityFilter, isQuarterFilterActive, currentQuarterDates]);
 
     // Estadísticas calculadas dinámicamente
     const stats = useMemo(() => {
         const summary = filteredInvoices.reduce((acc, inv) => {
-            acc.total_accumulated += parseFloat(inv.total || 0);
-            acc.total_iva += parseFloat(inv.iva || 0);
-            acc.total_req += parseFloat(inv.r_eq || 0);
+            const type = inv.invoice_type || 'expense';
+            const total = parseFloat(inv.total || 0);
+            const iva = parseFloat(inv.iva || 0);
+            const req = parseFloat(inv.r_eq || 0);
+
+            if (type === 'income') {
+                acc.total_income += total;
+                acc.iva_repercutido += iva;
+                acc.income_count += 1;
+            } else {
+                acc.total_expense += total;
+                acc.iva_soportado += iva;
+                acc.total_req += req;
+                acc.expense_count += 1;
+            }
             acc.invoice_count += 1;
             return acc;
-        }, { total_accumulated: 0, total_iva: 0, total_req: 0, invoice_count: 0 });
+        }, { total_income: 0, total_expense: 0, iva_soportado: 0, iva_repercutido: 0, total_req: 0, income_count: 0, expense_count: 0, invoice_count: 0 });
 
-        // Cálculo de Top Emisor
-        const emisorMap = filteredInvoices.reduce((acc, inv) => {
-            acc[inv.emisor] = (acc[inv.emisor] || 0) + parseFloat(inv.total || 0);
-            return acc;
-        }, {});
+        // Cálculo de Top Emisor de gasto
+        const emisorMap = filteredInvoices
+            .filter(inv => (inv.invoice_type || 'expense') === 'expense')
+            .reduce((acc, inv) => {
+                acc[inv.emisor] = (acc[inv.emisor] || 0) + parseFloat(inv.total || 0);
+                return acc;
+            }, {});
 
         const topEmisor = Object.entries(emisorMap)
             .map(([emisor, total]) => ({ emisor, total }))
             .sort((a, b) => b.total - a.total)[0];
 
+        const net = summary.total_income - summary.total_expense;
+
         return {
             summary: {
                 ...summary,
-                total_accumulated: summary.total_accumulated.toFixed(2),
-                total_iva: summary.total_iva.toFixed(2),
-                total_req: summary.total_req.toFixed(2)
+                total_income: summary.total_income.toFixed(2),
+                total_expense: summary.total_expense.toFixed(2),
+                iva_soportado: summary.iva_soportado.toFixed(2),
+                iva_repercutido: summary.iva_repercutido.toFixed(2),
+                total_req: summary.total_req.toFixed(2),
+                net: net.toFixed(2)
             },
             topEmisor
         };
@@ -152,32 +173,32 @@ export default function Dashboard({ apiBase, user }) {
         <div className="flex flex-col gap-6">
             <div className="flex flex-wrap gap-4">
                 <SmartCard
-                    title="Total Acumulado"
-                    value={`${stats.summary.total_accumulated}€`}
-                    subtext={`De ${stats.summary.invoice_count} facturas`}
-                    icon="💰"
+                    title="Ingresos"
+                    value={`${stats.summary.total_income}€`}
+                    subtext={`${stats.summary.income_count} facturas emitidas`}
+                    icon="📈"
                     color="var(--success)"
                 />
                 <SmartCard
-                    title="IVA Acumulado"
-                    value={`${stats.summary.total_iva}€`}
-                    subtext="Impuestos IVA"
+                    title="Gastos"
+                    value={`${stats.summary.total_expense}€`}
+                    subtext={`${stats.summary.expense_count} facturas recibidas`}
+                    icon="💸"
+                    color="var(--danger)"
+                />
+                <SmartCard
+                    title="IVA neto"
+                    value={`${(parseFloat(stats.summary.iva_repercutido) - parseFloat(stats.summary.iva_soportado)).toFixed(2)}€`}
+                    subtext={`Rep. ${stats.summary.iva_repercutido}€ / Sop. ${stats.summary.iva_soportado}€`}
                     icon="🏛️"
                     color="var(--primary)"
                 />
                 <SmartCard
-                    title="R.EQ Acumulado"
-                    value={`${stats.summary.total_req}€`}
-                    subtext="Recargo de equiv."
+                    title="Resultado aprox."
+                    value={`${stats.summary.net}€`}
+                    subtext={`R.EQ gastos: ${stats.summary.total_req}€`}
                     icon="⚖️"
                     color="#8b5cf6"
-                />
-                <SmartCard
-                    title="Top Emisor"
-                    value={stats.topEmisor?.emisor || "N/A"}
-                    subtext={`${stats.topEmisor?.total ? stats.topEmisor.total.toFixed(2) : '0.00'}€ gastados`}
-                    icon="🏢"
-                    color="var(--warning)"
                 />
             </div>
 
@@ -194,6 +215,8 @@ export default function Dashboard({ apiBase, user }) {
                 setEndDate={setEndDate}
                 otherExpenseFilter={otherExpenseFilter}
                 setOtherExpenseFilter={setOtherExpenseFilter}
+                invoiceTypeFilter={invoiceTypeFilter}
+                setInvoiceTypeFilter={setInvoiceTypeFilter}
                 activityFilter={activityFilter}
                 setActivityFilter={setActivityFilter}
                 isQuarterFilterActive={isQuarterFilterActive}

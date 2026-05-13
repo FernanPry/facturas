@@ -73,7 +73,7 @@ export default function Activities({ apiBase }) {
         }
     };
 
-    const handleLinkIssuer = async (emisor_name, activity_id) => {
+    const handleLinkIssuer = async (emisor_name, activity_id, invoice_type) => {
         try {
             const token = localStorage.getItem('token');
             await fetch(`${apiBase}/issuers/link`, {
@@ -82,14 +82,14 @@ export default function Activities({ apiBase }) {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ emisor_name, activity_id })
+                body: JSON.stringify({ emisor_name, activity_id, invoice_type })
             });
             
             // Actualizar estado local
             setIssuers(issuers.map(iss => 
-                iss.name === emisor_name ? { ...iss, activity_id: activity_id ? parseInt(activity_id) : null } : iss
+                iss.name === emisor_name ? { ...iss, activity_id: activity_id ? parseInt(activity_id) : null, invoice_type } : iss
             ));
-            showNotification("Vínculo emisor-actividad actualizado");
+            showNotification("Vínculo emisor-actividad/tipo actualizado y aplicado al histórico");
         } catch (error) {
             console.error("Error linking issuer:", error);
         }
@@ -177,6 +177,7 @@ export default function Activities({ apiBase }) {
                             <tr className="border-b">
                                 <th className="text-left py-4 px-4 text-xs font-semibold text-muted uppercase tracking-wider">Emisor</th>
                                 <th className="text-left py-4 px-4 text-xs font-semibold text-muted uppercase tracking-wider">Actividad Asignada</th>
+                                <th className="text-left py-4 px-4 text-xs font-semibold text-muted uppercase tracking-wider">Tipo</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -187,7 +188,7 @@ export default function Activities({ apiBase }) {
                                         <select 
                                             className="input-minimal w-full md:max-w-xs cursor-pointer"
                                             value={iss.activity_id || ''}
-                                            onChange={(e) => handleLinkIssuer(iss.name, e.target.value)}
+                                            onChange={(e) => handleLinkIssuer(iss.name, e.target.value, iss.invoice_type || 'expense')}
                                         >
                                             <option value="">Actividad sin asignar</option>
                                             {activities.map(act => (
@@ -195,11 +196,21 @@ export default function Activities({ apiBase }) {
                                             ))}
                                         </select>
                                     </td>
+                                    <td className="py-4 px-4">
+                                        <select
+                                            className="input-minimal w-full md:max-w-xs cursor-pointer"
+                                            value={iss.invoice_type || 'expense'}
+                                            onChange={(e) => handleLinkIssuer(iss.name, iss.activity_id || '', e.target.value)}
+                                        >
+                                            <option value="expense">Factura recibida / gasto</option>
+                                            <option value="income">Factura emitida / ingreso</option>
+                                        </select>
+                                    </td>
                                 </tr>
                             ))}
                             {issuers.length === 0 && (
                                 <tr>
-                                    <td colSpan="2" className="py-12 text-center text-muted">
+                                    <td colSpan="3" className="py-12 text-center text-muted">
                                         No se han detectado emisores aún. Sube algunas facturas primero.
                                     </td>
                                 </tr>

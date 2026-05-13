@@ -136,12 +136,12 @@ async function main() {
       const res = await pool.query(`
         INSERT INTO invoices (
           user_id, emisor, invoice_date, reference, subtotal, iva, r_eq, total_taxes, total,
-          ingestion_channel, raw_ai_response, file_path, actividad, is_other_expense
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          ingestion_channel, raw_ai_response, file_path, actividad, is_other_expense, invoice_type
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         RETURNING id, reference, invoice_date, total, file_path;
       `, [
         CONFIG.userId, CONFIG.issuer, date, reference, CONFIG.subtotal, iva, 0, iva, total,
-        'web', raw, relativePath, null, false
+        'web', raw, relativePath, null, false, 'expense'
       ]);
       created.push(res.rows[0]);
     }

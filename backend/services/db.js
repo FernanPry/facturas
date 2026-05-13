@@ -115,28 +115,30 @@ const saveInvoice = async (userId, data, channel, rawResponse, filePath = null) 
     // Normalización: Agrupación difusa (Fuzzy Matching)
     emisor = await getCanonicalEmisor(userId, emisor);
 
-    // Buscar si el emisor tiene una actividad pre-asignada
+    // Buscar si el emisor tiene una actividad y tipo de factura pre-asignados
     const mappingRes = await query(
-        `SELECT a.name 
+        `SELECT a.name, COALESCE(ui.invoice_type, 'expense') AS invoice_type
          FROM user_issuers ui
-         JOIN activities a ON a.id = ui.activity_id
+         LEFT JOIN activities a ON a.id = ui.activity_id
          WHERE ui.user_id = $1 AND ui.emisor_name = $2`,
         [userId, emisor]
     );
     
     let activityName = mappingRes.rows.length > 0 ? mappingRes.rows[0].name : null;
+    let invoiceType = mappingRes.rows.length > 0 ? mappingRes.rows[0].invoice_type : 'expense';
+    if (!['expense', 'income'].includes(invoiceType)) invoiceType = 'expense';
 
     const text = `
     INSERT INTO invoices (
-      user_id, emisor, invoice_date, reference, subtotal, iva, r_eq, total_taxes, total, ingestion_channel, raw_ai_response, file_path, actividad
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      user_id, emisor, invoice_date, reference, subtotal, iva, r_eq, total_taxes, total, ingestion_channel, raw_ai_response, file_path, actividad, invoice_type
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     RETURNING *;
   `;
     const values = [
-        userId, emisor, fecha_emision, referencia, subtotal, iva, r_eq, total_impuestos, total, channel, rawResponse, filePath, activityName
+        userId, emisor, fecha_emision, referencia, subtotal, iva, r_eq, total_impuestos, total, channel, rawResponse, filePath, activityName, invoiceType
     ];
 
-    console.log("[DB] Guardando factura - Canal:", channel, "Ref:", referencia, "Actividad:", activityName);
+    console.log("[DB] Guardando factura - Canal:", channel, "Ref:", referencia, "Actividad:", activityName, "Tipo:", invoiceType);
     const res = await query(text, values);
     return res.rows[0];
 };
@@ -253,32 +255,38 @@ const getUserIssuers = async (userId) => {
     
     // Obtenemos los mapeos guardados
     const mappingsRes = await query(
-        "SELECT emisor_name, activity_id FROM user_issuers WHERE user_id = $1",
+        "SELECT emisor_name, activity_id, COALESCE(invoice_type, 'expense') AS invoice_type FROM user_issuers WHERE user_id = $1",
         [userId]
     );
     
     const mappings = {};
     mappingsRes.rows.forEach(m => {
-        mappings[m.emisor_name] = m.activity_id;
+        mappings[m.emisor_name] = {
+            activity_id: m.activity_id,
+            invoice_type: m.invoice_type || 'expense'
+        };
     });
 
     return invoicesRes.rows.map(row => ({
         name: row.emisor,
-        activity_id: mappings[row.emisor] || null
+        activity_id: mappings[row.emisor]?.activity_id || null,
+        invoice_type: mappings[row.emisor]?.invoice_type || 'expense'
     }));
 };
 
 /**
  * Vincular un emisor a una actividad y opcionalmente actualizar el historial
  */
-const linkIssuerToActivity = async (userId, emisorName, activityId) => {
+const linkIssuerToActivity = async (userId, emisorName, activityId, invoiceType = 'expense') => {
+    if (!['expense', 'income'].includes(invoiceType)) invoiceType = 'expense';
+
     // 1. Guardar/Actualizar el mapeo
     await query(
-        `INSERT INTO user_issuers (user_id, emisor_name, activity_id) 
-         VALUES ($1, $2, $3)
+        `INSERT INTO user_issuers (user_id, emisor_name, activity_id, invoice_type) 
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (user_id, emisor_name) 
-         DO UPDATE SET activity_id = EXCLUDED.activity_id`,
-        [userId, emisorName, activityId]
+         DO UPDATE SET activity_id = EXCLUDED.activity_id, invoice_type = EXCLUDED.invoice_type`,
+        [userId, emisorName, activityId || null, invoiceType]
     );
 
     // 2. Obtener el nombre de la actividad para registro histórico (opcional pero recomendado por el usuario)
@@ -288,7 +296,13 @@ const linkIssuerToActivity = async (userId, emisorName, activityId) => {
         if (actRes.rows.length > 0) activityName = actRes.rows[0].name;
     }
 
-    return { emisorName, activityId, activityName };
+    // 3. Aplicar la relación también al histórico de ese emisor
+    await query(
+        "UPDATE invoices SET actividad = $1, invoice_type = $2 WHERE user_id = $3 AND emisor = $4",
+        [activityName, invoiceType, userId, emisorName]
+    );
+
+    return { emisorName, activityId, activityName, invoiceType };
 };
 
 /**
@@ -313,6 +327,20 @@ const updateInvoiceActivity = async (userId, invoiceId, activityName) => {
     return res.rows[0];
 };
 
+/**
+ * Actualizar el tipo de factura individual
+ */
+const updateInvoiceType = async (userId, invoiceId, invoiceType) => {
+    if (!['expense', 'income'].includes(invoiceType)) {
+        throw new Error("Tipo de factura inválido");
+    }
+    const res = await query(
+        "UPDATE invoices SET invoice_type = $1 WHERE id = $2 AND user_id = $3 RETURNING *",
+        [invoiceType, invoiceId, userId]
+    );
+    return res.rows[0];
+};
+
 module.exports = {
     query,
     findUserByTelegramId,
@@ -330,5 +358,6 @@ module.exports = {
     getUserIssuers,
     linkIssuerToActivity,
     updateInvoiceOtherExpense,
-    updateInvoiceActivity
+    updateInvoiceActivity,
+    updateInvoiceType
 };

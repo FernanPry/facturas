@@ -329,9 +329,9 @@ app.get("/api/issuers", async (req, res) => {
 });
 
 app.post("/api/issuers/link", async (req, res) => {
-    const { emisor_name, activity_id } = req.body;
+    const { emisor_name, activity_id, invoice_type } = req.body;
     try {
-        const result = await db.linkIssuerToActivity(req.user.id, emisor_name, activity_id);
+        const result = await db.linkIssuerToActivity(req.user.id, emisor_name, activity_id, invoice_type);
         res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -361,6 +361,19 @@ app.put("/api/invoices/:id/activity", async (req, res) => {
         res.json(updated);
     } catch (error) {
         console.error("Error updating invoice activity:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put("/api/invoices/:id/type", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { invoiceType } = req.body;
+        const updated = await db.updateInvoiceType(req.user.id, id, invoiceType);
+        if (!updated) return res.status(404).json({ error: "Factura no encontrada" });
+        res.json(updated);
+    } catch (error) {
+        console.error("Error updating invoice type:", error);
         res.status(500).json({ error: error.message });
     }
 });
