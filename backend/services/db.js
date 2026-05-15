@@ -1,5 +1,7 @@
 const { Pool } = require("pg");
 
+const VALID_INVOICE_TYPES = ['expense', 'income', 'other_expense', 'other_income'];
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
 });
@@ -126,7 +128,7 @@ const saveInvoice = async (userId, data, channel, rawResponse, filePath = null) 
     
     let activityName = mappingRes.rows.length > 0 ? mappingRes.rows[0].name : null;
     let invoiceType = mappingRes.rows.length > 0 ? mappingRes.rows[0].invoice_type : 'expense';
-    if (!['expense', 'income'].includes(invoiceType)) invoiceType = 'expense';
+    if (!VALID_INVOICE_TYPES.includes(invoiceType)) invoiceType = 'expense';
 
     const text = `
     INSERT INTO invoices (
@@ -278,7 +280,7 @@ const getUserIssuers = async (userId) => {
  * Vincular un emisor a una actividad y opcionalmente actualizar el historial
  */
 const linkIssuerToActivity = async (userId, emisorName, activityId, invoiceType = 'expense') => {
-    if (!['expense', 'income'].includes(invoiceType)) invoiceType = 'expense';
+    if (!VALID_INVOICE_TYPES.includes(invoiceType)) invoiceType = 'expense';
 
     // 1. Guardar/Actualizar el mapeo
     await query(
@@ -331,7 +333,7 @@ const updateInvoiceActivity = async (userId, invoiceId, activityName) => {
  * Actualizar el tipo de factura individual
  */
 const updateInvoiceType = async (userId, invoiceId, invoiceType) => {
-    if (!['expense', 'income'].includes(invoiceType)) {
+    if (!VALID_INVOICE_TYPES.includes(invoiceType)) {
         throw new Error("Tipo de factura inválido");
     }
     const res = await query(

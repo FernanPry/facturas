@@ -16,9 +16,9 @@ async function migrate() {
         await db.query("UPDATE user_issuers SET invoice_type = 'expense' WHERE invoice_type IS NULL;");
 
         await db.query("ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_invoice_type_check;");
-        await db.query("ALTER TABLE invoices ADD CONSTRAINT invoices_invoice_type_check CHECK (invoice_type IN ('expense','income'));");
+        await db.query("ALTER TABLE invoices ADD CONSTRAINT invoices_invoice_type_check CHECK (invoice_type IN ('expense','income','other_expense','other_income'));");
         await db.query("ALTER TABLE user_issuers DROP CONSTRAINT IF EXISTS user_issuers_invoice_type_check;");
-        await db.query("ALTER TABLE user_issuers ADD CONSTRAINT user_issuers_invoice_type_check CHECK (invoice_type IN ('expense','income'));");
+        await db.query("ALTER TABLE user_issuers ADD CONSTRAINT user_issuers_invoice_type_check CHECK (invoice_type IN ('expense','income','other_expense','other_income'));");
 
         console.log("Migration successful!");
         process.exit(0);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Save, Briefcase, Building2, Info, CheckCircle2 } from 'lucide-react';
+import { INVOICE_TYPES } from '../utils/invoiceTypes';
 
 export default function Activities({ apiBase }) {
     const [activities, setActivities] = useState([]);
@@ -202,8 +203,9 @@ export default function Activities({ apiBase }) {
                                             value={iss.invoice_type || 'expense'}
                                             onChange={(e) => handleLinkIssuer(iss.name, iss.activity_id || '', e.target.value)}
                                         >
-                                            <option value="expense">Factura recibida / gasto</option>
-                                            <option value="income">Factura emitida / ingreso</option>
+                                            {INVOICE_TYPES.map(type => (
+                                                <option key={type.value} value={type.value}>{type.label}</option>
+                                            ))}
                                         </select>
                                     </td>
                                 </tr>

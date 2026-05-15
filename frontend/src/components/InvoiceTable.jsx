@@ -1,4 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
+import { INVOICE_TYPES, getInvoiceTypeLabel, isIncomeType } from '../utils/invoiceTypes';
 
 export default function InvoiceTable({
     invoices,
@@ -98,7 +99,7 @@ export default function InvoiceTable({
         const headers = ["Tipo", "Emisor", "Fecha", "Actividad", "Exportar IVA", "Nº Factura", "Total", "Subtotal", "IVA", "Recargo Equi.", "Total Impuestos"];
         
         const rows = dataToExport.map(inv => [
-            (inv.invoice_type || 'expense') === 'income' ? 'Ingreso' : 'Factura recibida',
+            getInvoiceTypeLabel(inv.invoice_type || 'expense'),
             inv.emisor,
             inv.invoice_date ? new Date(inv.invoice_date).toISOString().split('T')[0] : '---',
             inv.actividad || "Sin asignar",
@@ -156,8 +157,9 @@ export default function InvoiceTable({
                             style={{ width: '100%', cursor: 'pointer' }}
                         >
                             <option value="all">Todos</option>
-                            <option value="expense">Facturas recibidas</option>
-                            <option value="income">Ingresos</option>
+                            {INVOICE_TYPES.map(type => (
+                                <option key={type.value} value={type.value}>{type.label}</option>
+                            ))}
                         </select>
                     </div>
 
@@ -392,14 +394,15 @@ export default function InvoiceTable({
                                                         padding: '0.2rem 0.4rem',
                                                         borderRadius: '999px',
                                                         border: '1px solid var(--border)',
-                                                        background: (inv.invoice_type || 'expense') === 'income' ? '#dcfce7' : 'var(--bg-secondary)',
-                                                        color: (inv.invoice_type || 'expense') === 'income' ? '#166534' : 'var(--text-main)',
+                                                        background: isIncomeType(inv.invoice_type || 'expense') ? '#dcfce7' : 'var(--bg-secondary)',
+                                                        color: isIncomeType(inv.invoice_type || 'expense') ? '#166534' : 'var(--text-main)',
                                                         cursor: 'pointer',
                                                         width: '100%'
                                                     }}
                                                 >
-                                                    <option value="expense">Recibida</option>
-                                                    <option value="income">Ingreso</option>
+                                                    {INVOICE_TYPES.map(type => (
+                                                        <option key={type.value} value={type.value}>{type.label}</option>
+                                                    ))}
                                                 </select>
                                             </td>
                                             <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{inv.emisor}</td>

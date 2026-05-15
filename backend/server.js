@@ -134,6 +134,144 @@ app.get("/api/invoices", async (req, res) => {
     }
 });
 
+app.get("/api/stock-summary", async (req, res) => {
+    try {
+        const downloadsDir = "/home/charly/Descargas";
+        const fileRegex = /^Listado de productos activos \d{8}-\d{4}\.csv$/;
+
+        if (!fs.existsSync(downloadsDir)) {
+            return res.json({ total_stock_value: 0, total_units: 0, product_count: 0, file: null });
+        }
+
+        const files = fs.readdirSync(downloadsDir, { withFileTypes: true })
+            .filter((entry) => entry.isFile() && fileRegex.test(entry.name))
+            .map((entry) => {
+                const filePath = path.join(downloadsDir, entry.name);
+                return { name: entry.name, path: filePath, mtimeMs: fs.statSync(filePath).mtimeMs };
+            })
+            .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+        if (files.length === 0) {
+            return res.json({ total_stock_value: 0, total_units: 0, product_count: 0, file: null });
+        }
+
+        const latest = files[0];
+        const content = fs.readFileSync(latest.path, "latin1");
+        const lines = content.split(/\r?\n/).filter(Boolean);
+
+        const parseCsvLine = (line) => {
+            const cells = [];
+            let current = "";
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i += 1) {
+                const char = line[i];
+                const next = line[i + 1];
+
+                if (char === '"' && inQuotes && next === '"') {
+                    current += '"';
+                    i += 1;
+                } else if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ';' && !inQuotes) {
+                    cells.push(current);
+                    current = "";
+                } else {
+                    current += char;
+                }
+            }
+
+            cells.push(current);
+            return cells;
+        };
+
+        const parseNumber = (value) => Number(String(value || "")
+            .replace(/[^0-9,.-]/g, "")
+            .replace(/\./g, "")
+            .replace(",", ".")) || 0;
+
+        const headers = parseCsvLine(lines[0]);
+        const priceIndex = headers.indexOf("Precio de venta");
+        const stockIndex = headers.indexOf("Stock");
+
+        if (priceIndex === -1 || stockIndex === -1) {
+            return res.status(500).json({ error: "El CSV de stock no tiene las columnas esperadas" });
+        }
+
+        let totalStockValue = 0;
+        let totalUnits = 0;
+        let productCount = 0;
+
+        for (const line of lines.slice(1)) {
+            const cells = parseCsvLine(line);
+            const price = parseNumber(cells[priceIndex]);
+            const stock = parseNumber(cells[stockIndex]);
+
+            totalStockValue += price * stock;
+            totalUnits += stock;
+            productCount += 1;
+        }
+
+        res.json({
+            total_stock_value: Number(totalStockValue.toFixed(2)),
+            total_units: totalUnits,
+            product_count: productCount,
+            file: latest.name
+        });
+    } catch (error) {
+        console.error("Error leyendo stock:", error);
+        res.status(500).json({ error: "Error al leer el stock" });
+    }
+});
+
+app.get("/api/cash-history", async (req, res) => {
+    try {
+        const baseDir = "/home/charly/estanco/z_cajas";
+        const dailyFileRegex = /^z_cajas_(\d{4})_(\d{2})_(\d{2})\.json$/;
+
+        if (!fs.existsSync(baseDir)) {
+            return res.json([]);
+        }
+
+        const yearDirs = fs.readdirSync(baseDir, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => path.join(baseDir, entry.name));
+
+        const records = [];
+
+        for (const yearDir of yearDirs) {
+            const files = fs.readdirSync(yearDir, { withFileTypes: true })
+                .filter((entry) => entry.isFile() && dailyFileRegex.test(entry.name));
+
+            for (const file of files) {
+                const match = file.name.match(dailyFileRegex);
+                const filePath = path.join(yearDir, file.name);
+                const raw = fs.readFileSync(filePath, "utf8");
+                const json = JSON.parse(raw);
+                const fecha = json.fecha_z || `${match[1]}-${match[2]}-${match[3]}`;
+                const importeVentas = json.resumen_contable?.["Importe ventas IVA incl."] || {};
+                const totalIva = json.analisis_iva_totales || {};
+
+                records.push({
+                    id: `${match[1]}-${match[2]}-${match[3]}`,
+                    fecha,
+                    importe_ventas_iva_incl: importeVentas.importe || null,
+                    importe_ventas_iva_incl_num: Number(importeVentas.importe_num || 0),
+                    iva_repercutido: totalIva.total_iva || null,
+                    iva_repercutido_num: Number(totalIva.total_iva_num || 0),
+                    archivo: file.name
+                });
+            }
+        }
+
+        records.sort((a, b) => b.fecha.localeCompare(a.fecha));
+        res.json(records);
+    } catch (error) {
+        console.error("Error leyendo historial de cajas:", error);
+        res.status(500).json({ error: "Error al leer el historial de cajas" });
+    }
+});
+
 app.get("/api/invoices/download/:id", async (req, res) => {
     try {
         const id = req.params.id;

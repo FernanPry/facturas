@@ -1,9 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import SmartCard from './SmartCard';
 import InvoiceTable from './InvoiceTable';
+import { isIncomeType } from '../utils/invoiceTypes';
 
 export default function Dashboard({ apiBase, user }) {
     const [invoices, setInvoices] = useState([]);
+    const [cashHistory, setCashHistory] = useState([]);
+    const [stockSummary, setStockSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -12,7 +15,7 @@ export default function Dashboard({ apiBase, user }) {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [otherExpenseFilter, setOtherExpenseFilter] = useState('all'); // 'all', 'yes', 'no'
-    const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('all'); // 'all', 'expense', 'income'
+    const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('all'); // 'all', 'expense', 'income', 'other_expense', 'other_income'
     const [activityFilter, setActivityFilter] = useState('all'); // 'all' or activity name
     const [isQuarterFilterActive, setIsQuarterFilterActive] = useState(true);
 
@@ -47,8 +50,14 @@ export default function Dashboard({ apiBase, user }) {
                 const token = localStorage.getItem('token');
                 if (!token) throw new Error("No hay sesión activa");
 
-                const [invRes] = await Promise.all([
+                const [invRes, cashRes, stockRes] = await Promise.all([
                     fetch(`${apiBase}/invoices`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${apiBase}/cash-history`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${apiBase}/stock-summary`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     })
                 ]);
@@ -64,6 +73,22 @@ export default function Dashboard({ apiBase, user }) {
                 } else {
                     console.error("Data is not an array:", invData);
                     setInvoices([]);
+                }
+
+                if (cashRes.ok) {
+                    const cashData = await cashRes.json();
+                    setCashHistory(Array.isArray(cashData) ? cashData : []);
+                } else {
+                    console.error("Failed to fetch cash history:", cashRes.statusText);
+                    setCashHistory([]);
+                }
+
+                if (stockRes.ok) {
+                    const stockData = await stockRes.json();
+                    setStockSummary(stockData);
+                } else {
+                    console.error("Failed to fetch stock summary:", stockRes.statusText);
+                    setStockSummary(null);
                 }
             } catch (error) {
                 console.error("Error fetching dashboard data:", error);
@@ -108,15 +133,34 @@ export default function Dashboard({ apiBase, user }) {
         });
     }, [invoices, filterTerm, startDate, endDate, otherExpenseFilter, invoiceTypeFilter, activityFilter, isQuarterFilterActive, currentQuarterDates]);
 
+    const filteredCashHistory = useMemo(() => {
+        const effectiveStartDate = isQuarterFilterActive ? currentQuarterDates.start : startDate;
+        const effectiveEndDate = isQuarterFilterActive ? currentQuarterDates.end : endDate;
+        const includeCashHistory = !filterTerm.trim()
+            && activityFilter === 'all'
+            && otherExpenseFilter === 'all'
+            && ['all', 'income'].includes(invoiceTypeFilter);
+
+        if (!includeCashHistory) return [];
+
+        return cashHistory.filter((record) => {
+            const matchesStart = !effectiveStartDate || record.fecha >= effectiveStartDate;
+            const matchesEnd = !effectiveEndDate || record.fecha <= effectiveEndDate;
+            return matchesStart && matchesEnd;
+        });
+    }, [cashHistory, startDate, endDate, filterTerm, otherExpenseFilter, invoiceTypeFilter, activityFilter, isQuarterFilterActive, currentQuarterDates]);
+
     // Estadísticas calculadas dinámicamente
     const stats = useMemo(() => {
+        const cashIncome = filteredCashHistory.reduce((acc, record) => acc + Number(record.importe_ventas_iva_incl_num || 0), 0);
+        const cashVatOut = filteredCashHistory.reduce((acc, record) => acc + Number(record.iva_repercutido_num || 0), 0);
         const summary = filteredInvoices.reduce((acc, inv) => {
             const type = inv.invoice_type || 'expense';
             const total = parseFloat(inv.total || 0);
             const iva = parseFloat(inv.iva || 0);
             const req = parseFloat(inv.r_eq || 0);
 
-            if (type === 'income') {
+            if (isIncomeType(type)) {
                 acc.total_income += total;
                 acc.iva_repercutido += iva;
                 acc.income_count += 1;
@@ -132,7 +176,7 @@ export default function Dashboard({ apiBase, user }) {
 
         // Cálculo de Top Emisor de gasto
         const emisorMap = filteredInvoices
-            .filter(inv => (inv.invoice_type || 'expense') === 'expense')
+            .filter(inv => !isIncomeType(inv.invoice_type || 'expense'))
             .reduce((acc, inv) => {
                 acc[inv.emisor] = (acc[inv.emisor] || 0) + parseFloat(inv.total || 0);
                 return acc;
@@ -142,21 +186,27 @@ export default function Dashboard({ apiBase, user }) {
             .map(([emisor, total]) => ({ emisor, total }))
             .sort((a, b) => b.total - a.total)[0];
 
-        const net = summary.total_income - summary.total_expense;
+        const invoiceIncome = summary.total_income;
+        const totalIncome = invoiceIncome + cashIncome;
+        const net = totalIncome - summary.total_expense;
 
         return {
             summary: {
                 ...summary,
-                total_income: summary.total_income.toFixed(2),
+                cash_income: cashIncome.toFixed(2),
+                invoice_income: invoiceIncome.toFixed(2),
+                total_income: totalIncome.toFixed(2),
                 total_expense: summary.total_expense.toFixed(2),
                 iva_soportado: summary.iva_soportado.toFixed(2),
-                iva_repercutido: summary.iva_repercutido.toFixed(2),
+                iva_repercutido: (summary.iva_repercutido + cashVatOut).toFixed(2),
+                iva_repercutido_facturas: summary.iva_repercutido.toFixed(2),
+                iva_repercutido_z_caja: cashVatOut.toFixed(2),
                 total_req: summary.total_req.toFixed(2),
                 net: net.toFixed(2)
             },
             topEmisor
         };
-    }, [filteredInvoices]);
+    }, [filteredInvoices, filteredCashHistory]);
 
     if (loading) return <div style={{ color: 'var(--text-muted)' }}>Cargando datos...</div>;
 
@@ -175,7 +225,7 @@ export default function Dashboard({ apiBase, user }) {
                 <SmartCard
                     title="Ingresos"
                     value={`${stats.summary.total_income}€`}
-                    subtext={`${stats.summary.income_count} facturas emitidas`}
+                    subtext={`Z caja: ${stats.summary.cash_income}€ / Otros: ${stats.summary.invoice_income}€`}
                     icon="📈"
                     color="var(--success)"
                 />
@@ -189,16 +239,23 @@ export default function Dashboard({ apiBase, user }) {
                 <SmartCard
                     title="IVA neto"
                     value={`${(parseFloat(stats.summary.iva_repercutido) - parseFloat(stats.summary.iva_soportado)).toFixed(2)}€`}
-                    subtext={`Rep. ${stats.summary.iva_repercutido}€ / Sop. ${stats.summary.iva_soportado}€`}
+                    subtext={`Rep. ${stats.summary.iva_repercutido}€ (Z ${stats.summary.iva_repercutido_z_caja}€) / Sop. ${stats.summary.iva_soportado}€`}
                     icon="🏛️"
                     color="var(--primary)"
                 />
                 <SmartCard
                     title="Resultado aprox."
                     value={`${stats.summary.net}€`}
-                    subtext={`R.EQ gastos: ${stats.summary.total_req}€`}
+                    subtext={`Incluye Z caja + ingresos / R.EQ gastos: ${stats.summary.total_req}€`}
                     icon="⚖️"
                     color="#8b5cf6"
+                />
+                <SmartCard
+                    title="Stock"
+                    value={`${Number(stockSummary?.total_stock_value || 0).toFixed(2)}€`}
+                    subtext={stockSummary?.file ? `${stockSummary.total_units} uds / ${stockSummary.product_count} productos` : 'Sin descarga de stock'}
+                    icon="📦"
+                    color="#0f766e"
                 />
             </div>
 

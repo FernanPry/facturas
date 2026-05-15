@@ -15,7 +15,8 @@ import {
 
 const Sidebar = ({ activeTab, onTabChange, onLogout, user, theme, setTheme }) => {
     const menuItems = [
-        { id: 'dashboard', label: 'Historial', icon: History },
+        { id: 'dashboard', label: 'Historial Facturas', icon: History },
+        { id: 'cashHistory', label: 'Historial Cajas', icon: LayoutDashboard },
         { id: 'upload', label: 'Subir Facturas', icon: Plus },
         { id: 'activities', label: 'Actividades', icon: Briefcase },
         { id: 'finance', label: 'Análisis', icon: BarChart3 },

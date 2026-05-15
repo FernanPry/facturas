@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { isIncomeType } from '../utils/invoiceTypes';
 import { 
     TrendingUp, 
     TrendingDown, 
@@ -28,6 +29,7 @@ import {
 
 const FinanceDashboard = ({ apiBase, user }) => {
     const [invoices, setInvoices] = useState([]);
+    const [cashHistory, setCashHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterTerm, setFilterTerm] = useState('');
     const [selectedQuarter, setSelectedQuarter] = useState('all'); // all, Q1, Q2, Q3, Q4
@@ -40,12 +42,21 @@ const FinanceDashboard = ({ apiBase, user }) => {
     const fetchInvoices = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${apiBase}/invoices`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setInvoices(data);
+            const [invoiceRes, cashRes] = await Promise.all([
+                fetch(`${apiBase}/invoices`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }),
+                fetch(`${apiBase}/cash-history`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+            ]);
+            if (invoiceRes.ok) {
+                const data = await invoiceRes.json();
+                setInvoices(Array.isArray(data) ? data : []);
+            }
+            if (cashRes.ok) {
+                const data = await cashRes.json();
+                setCashHistory(Array.isArray(data) ? data : []);
             }
         } catch (error) {
             console.error("Error fetching data for dashboard:", error);
@@ -79,16 +90,37 @@ const FinanceDashboard = ({ apiBase, user }) => {
         });
     }, [invoices, filterTerm, selectedQuarter, selectedYear]);
 
+    const filteredCashHistory = useMemo(() => {
+        if (filterTerm.trim()) return [];
+
+        return cashHistory.filter((record) => {
+            const date = new Date(`${record.fecha}T00:00:00`);
+            const month = date.getMonth();
+            const year = date.getFullYear();
+
+            if (year !== selectedYear) return false;
+
+            if (selectedQuarter !== 'all') {
+                const quarter = Math.floor(month / 3) + 1;
+                if (`Q${quarter}` !== selectedQuarter) return false;
+            }
+
+            return true;
+        });
+    }, [cashHistory, filterTerm, selectedQuarter, selectedYear]);
+
     // --- PROCESAMIENTO DE DATOS ---
 
     // 1. KPIs
     const stats = useMemo(() => {
+        const cashIncome = filteredCashHistory.reduce((acc, record) => acc + Number(record.importe_ventas_iva_incl_num || 0), 0);
+        const cashVatOut = filteredCashHistory.reduce((acc, record) => acc + Number(record.iva_repercutido_num || 0), 0);
         const totals = filteredInvoices.reduce((acc, curr) => {
             const type = curr.invoice_type || 'expense';
             const total = Number(curr.total || 0);
             const iva = Number(curr.iva || 0);
             const req = Number(curr.r_eq || 0);
-            if (type === 'income') {
+            if (isIncomeType(type)) {
                 acc.income += total;
                 acc.vatOut += iva;
                 acc.incomeCount += 1;
@@ -102,36 +134,54 @@ const FinanceDashboard = ({ apiBase, user }) => {
             return acc;
         }, { income: 0, expense: 0, vatIn: 0, vatOut: 0, req: 0, count: 0, incomeCount: 0, expenseCount: 0 });
 
-        const calcNet = (items) => items.reduce((acc, curr) => {
-            const sign = (curr.invoice_type || 'expense') === 'income' ? 1 : -1;
+        const calcInvoiceNet = (items) => items.reduce((acc, curr) => {
+            const sign = isIncomeType(curr.invoice_type || 'expense') ? 1 : -1;
             return acc + sign * Number(curr.total || 0);
         }, 0);
+
+        const cashTotalForMonth = (year, month) => filteredCashHistory
+            .filter((record) => {
+                const d = new Date(`${record.fecha}T00:00:00`);
+                return d.getMonth() === month && d.getFullYear() === year;
+            })
+            .reduce((acc, record) => acc + Number(record.importe_ventas_iva_incl_num || 0), 0);
 
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
-        const currentMonthNet = calcNet(filteredInvoices.filter(inv => {
+        const currentMonthNet = calcInvoiceNet(filteredInvoices.filter(inv => {
             const d = new Date(inv.invoice_date);
             return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-        }));
+        })) + cashTotalForMonth(currentYear, currentMonth);
 
         const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
         const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-        const prevMonthNet = calcNet(invoices.filter(inv => {
+        const prevMonthNet = calcInvoiceNet(invoices.filter(inv => {
             const d = new Date(inv.invoice_date);
             return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
-        }));
+        })) + cashHistory
+            .filter((record) => {
+                const d = new Date(`${record.fecha}T00:00:00`);
+                return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+            })
+            .reduce((acc, record) => acc + Number(record.importe_ventas_iva_incl_num || 0), 0);
 
         const trend = prevMonthNet === 0 ? 0 : ((currentMonthNet - prevMonthNet) / Math.abs(prevMonthNet)) * 100;
 
         return {
             ...totals,
-            net: totals.income - totals.expense,
-            vatNet: totals.vatOut - totals.vatIn,
+            invoiceIncome: totals.income,
+            cashIncome,
+            cashVatOut,
+            income: totals.income + cashIncome,
+            net: totals.income + cashIncome - totals.expense,
+            vatOut: totals.vatOut + cashVatOut,
+            invoiceVatOut: totals.vatOut,
+            vatNet: totals.vatOut + cashVatOut - totals.vatIn,
             trend: trend.toFixed(1),
             isTrendPositive: trend >= 0
         };
-    }, [filteredInvoices, invoices]);
+    }, [filteredInvoices, filteredCashHistory, invoices, cashHistory]);
 
     // 2. Gráfico de Área (Resultado Mensual por Actividad)
     const areaData = useMemo(() => {
@@ -141,12 +191,19 @@ const FinanceDashboard = ({ apiBase, user }) => {
             const m = d.getMonth();
             const monthName = months[m];
             const activity = inv.actividad || 'Sin Categoría';
-            const sign = (inv.invoice_type || 'expense') === 'income' ? 1 : -1;
+            const sign = isIncomeType(inv.invoice_type || 'expense') ? 1 : -1;
             
             if (!acc[monthName]) acc[monthName] = { name: monthName };
             acc[monthName][activity] = (acc[monthName][activity] || 0) + sign * Number(inv.total || 0);
             return acc;
         }, {});
+
+        filteredCashHistory.forEach((record) => {
+            const d = new Date(`${record.fecha}T00:00:00`);
+            const monthName = months[d.getMonth()];
+            if (!grouped[monthName]) grouped[monthName] = { name: monthName };
+            grouped[monthName]['Z de caja'] = (grouped[monthName]['Z de caja'] || 0) + Number(record.importe_ventas_iva_incl_num || 0);
+        });
 
         // Asegurar orden cronológico: Enero a la izquierda, meses posteriores a la derecha
         return Object.values(grouped).sort((a, b) => {
@@ -154,18 +211,19 @@ const FinanceDashboard = ({ apiBase, user }) => {
             const indexB = months.indexOf(b.name);
             return indexA - indexB; // Ascendente: más antiguo (índice menor) primero
         });
-    }, [filteredInvoices]);
+    }, [filteredInvoices, filteredCashHistory]);
 
     const activities = useMemo(() => {
         const set = new Set();
         filteredInvoices.forEach(inv => set.add(inv.actividad || 'Sin Categoría'));
+        if (filteredCashHistory.length > 0) set.add('Z de caja');
         return Array.from(set);
-    }, [filteredInvoices]);
+    }, [filteredInvoices, filteredCashHistory]);
 
     // 3. Top 10 Emisores
     const topIssuers = useMemo(() => {
         const counts = filteredInvoices
-            .filter(inv => (inv.invoice_type || 'expense') === 'expense')
+            .filter(inv => !isIncomeType(inv.invoice_type || 'expense'))
             .reduce((acc, inv) => {
                 const emisor = inv.emisor || 'Desconocido';
                 acc[emisor] = (acc[emisor] || 0) + Number(inv.total || 0);
@@ -189,9 +247,10 @@ const FinanceDashboard = ({ apiBase, user }) => {
         return [
             { name: 'Telegram', value: counts.telegram || 0, color: '#0088cc' },
             { name: 'Email', value: counts.email || 0, color: '#4f46e5' },
-            { name: 'Web', value: counts.web || 0, color: '#ea4335' }
+            { name: 'Web', value: counts.web || 0, color: '#ea4335' },
+            { name: 'Z Caja', value: filteredCashHistory.length, color: '#10b981' }
         ].filter(c => c.value > 0);
-    }, [filteredInvoices]);
+    }, [filteredInvoices, filteredCashHistory]);
 
     if (loading) return <div className="p-8 text-center text-slate-400">Cargando análisis BI...</div>;
 
@@ -253,6 +312,7 @@ const FinanceDashboard = ({ apiBase, user }) => {
                     trend={stats.trend}
                     isPositive={stats.isTrendPositive}
                     color="indigo"
+                    label={`Z caja ${stats.cashIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Otros ${stats.invoiceIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
                 />
                 <KPICard 
                     title="Gastos" 
@@ -266,14 +326,14 @@ const FinanceDashboard = ({ apiBase, user }) => {
                     value={`${stats.vatNet.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
                     icon={<CreditCard className="w-5 h-5" />}
                     color="rose"
-                    label={`Rep. ${stats.vatOut.toFixed(2)}€ / Sop. ${stats.vatIn.toFixed(2)}€`}
+                    label={`Rep. ${stats.vatOut.toFixed(2)}€ (Z ${stats.cashVatOut.toFixed(2)}€) / Sop. ${stats.vatIn.toFixed(2)}€`}
                 />
                 <KPICard 
                     title="Resultado aprox." 
                     value={`${stats.net.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
                     icon={<Hash className="w-5 h-5" />}
                     color="emerald"
-                    label={`${stats.count} facturas / R.EQ ${stats.req.toFixed(2)}€`}
+                    label={`${stats.count} facturas + ${filteredCashHistory.length} cierres / R.EQ ${stats.req.toFixed(2)}€`}
                 />
             </div>
 
@@ -283,7 +343,7 @@ const FinanceDashboard = ({ apiBase, user }) => {
                 {/* ÁREA APILADA POR ACTIVIDAD */}
                 <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <div className="flex justify-between items-center mb-6">
-                        <h4 className="font-bold text-slate-800 dark:text-slate-100">Resultado Mensual por Actividad</h4>
+                        <h4 className="font-bold text-slate-800 dark:text-slate-100">Resultado Mensual por Actividad y Z de caja</h4>
                         <span className="text-xs font-medium px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">Tendencia Temporal</span>
                     </div>
                     <div className="h-[350px] w-full">
@@ -369,7 +429,7 @@ const FinanceDashboard = ({ apiBase, user }) => {
                         </ResponsiveContainer>
                     </div>
                     <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
-                        <p className="text-xs text-slate-500 text-center">Telegram supone el {stats.count ? ((channelData.find(c => c.name === 'Telegram')?.value || 0) / stats.count * 100).toFixed(0) : 0}% del volumen filtrado.</p>
+                        <p className="text-xs text-slate-500 text-center">Telegram supone el {(stats.count + filteredCashHistory.length) ? ((channelData.find(c => c.name === 'Telegram')?.value || 0) / (stats.count + filteredCashHistory.length) * 100).toFixed(0) : 0}% del volumen filtrado.</p>
                     </div>
                 </div>
 

@@ -12,7 +12,7 @@ const CONFIG = {
   issuer: 'Ignacio Gómez Martín',
   customer: 'Carlos Gómez de la Casa',
   concept: 'Alquiler',
-  subtotal: 1000.00,
+  total: 1020.00,
   ivaRate: 0.21,
   uploadDir: '/home/charly/facturas/backend/uploads/2',
 };
@@ -101,8 +101,9 @@ async function main() {
   fs.mkdirSync(CONFIG.uploadDir, { recursive: true });
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const iva = Number((CONFIG.subtotal * CONFIG.ivaRate).toFixed(2));
-  const total = Number((CONFIG.subtotal + iva).toFixed(2));
+  const total = Number(CONFIG.total.toFixed(2));
+  const subtotal = Number((total / (1 + CONFIG.ivaRate)).toFixed(2));
+  const iva = Number((total - subtotal).toFixed(2));
   const created = [];
   const skipped = [];
 
@@ -120,7 +121,7 @@ async function main() {
       const pdfName = `factura_${reference}.pdf`;
       const relativePath = `uploads/${CONFIG.userId}/${pdfName}`;
       const absolutePath = path.join(CONFIG.uploadDir, pdfName);
-      const invoice = { reference, date, month, subtotal: CONFIG.subtotal, iva, total };
+      const invoice = { reference, date, month, subtotal, iva, total };
       await drawInvoicePdf(absolutePath, invoice);
 
       const raw = {
@@ -140,7 +141,7 @@ async function main() {
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         RETURNING id, reference, invoice_date, total, file_path;
       `, [
-        CONFIG.userId, CONFIG.issuer, date, reference, CONFIG.subtotal, iva, 0, iva, total,
+        CONFIG.userId, CONFIG.issuer, date, reference, subtotal, iva, 0, iva, total,
         'web', raw, relativePath, null, false, 'expense'
       ]);
       created.push(res.rows[0]);
