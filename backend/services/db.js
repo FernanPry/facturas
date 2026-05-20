@@ -63,11 +63,49 @@ const getLevenshteinDistance = (s, t) => {
 };
 
 /**
- * Obtener el nombre canónico de un emisor basado en similitud (Fuzzy Matching)
- * Umbral: 2 caracteres de diferencia
+ * Obtener el nombre canónico de un emisor basado en reglas conocidas y similitud.
+ * Evita duplicados por acentos, puntuación o prefijos comerciales como COMET.
  */
+const normalizeIssuerName = (value) => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const getRawInvoiceText = (...values) => values
+    .filter(value => value !== null && value !== undefined)
+    .map(value => typeof value === "string" ? value : JSON.stringify(value))
+    .join(" ");
+
+const applyCarlosGomezInvoiceLabel = (emisor, data, rawResponse) => {
+    const normalizedEmisor = normalizeIssuerName(emisor);
+    if (normalizedEmisor !== "carlos gomez de la casa") return emisor;
+
+    const rawText = normalizeIssuerName(getRawInvoiceText(data, rawResponse));
+
+    if (rawText.includes("celeritas") && rawText.includes("transporte")) {
+        return "CARLOS GOMEZ DE LA CASA (Celeritas)";
+    }
+
+    if (rawText.includes("cloud vending")) {
+        return "CARLOS GOMEZ DE LA CASA (Cloud vending)";
+    }
+
+    return emisor;
+};
+
 const getCanonicalEmisor = async (userId, newName) => {
     if (!newName) return newName;
+
+    const normalizedNewName = normalizeIssuerName(newName);
+
+    // Regla específica: COMET / Compañía de Tabacos del Mediterráneo.
+    // Sugarland también contiene "mediterraneo", por eso exigimos "tabacos" o "comet".
+    if ((normalizedNewName.includes("comet") || normalizedNewName.includes("tabacos"))
+        && normalizedNewName.includes("mediterraneo")) {
+        return "COMET";
+    }
     
     // Obtener todos los emisores únicos del usuario
     const res = await query(
@@ -80,7 +118,10 @@ const getCanonicalEmisor = async (userId, newName) => {
     let minDistance = 3; // Buscamos distancia <= 2
 
     for (const existing of existingIssuers) {
-        const distance = getLevenshteinDistance(newName.toLowerCase().trim(), existing.toLowerCase().trim());
+        const normalizedExisting = normalizeIssuerName(existing);
+        if (normalizedExisting === normalizedNewName) return existing;
+
+        const distance = getLevenshteinDistance(normalizedNewName, normalizedExisting);
         if (distance < minDistance) {
             minDistance = distance;
             bestMatch = existing;
@@ -113,6 +154,9 @@ const saveInvoice = async (userId, data, channel, rawResponse, filePath = null) 
         total_impuestos,
         total
     } = data;
+
+    // Regla específica: conservar Carlos como emisor y añadir etiqueta del facturado a.
+    emisor = applyCarlosGomezInvoiceLabel(emisor, data, rawResponse);
 
     // Normalización: Agrupación difusa (Fuzzy Matching)
     emisor = await getCanonicalEmisor(userId, emisor);

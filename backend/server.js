@@ -136,6 +136,7 @@ app.get("/api/invoices", async (req, res) => {
 
 app.get("/api/stock-summary", async (req, res) => {
     try {
+        const stockSummaryPath = "/home/charly/facturas/backend/stock_summary.json";
         const downloadsDir = "/home/charly/Descargas";
         const fileRegex = /^Listado de productos activos \d{8}-\d{4}\.csv$/;
 
@@ -156,6 +157,18 @@ app.get("/api/stock-summary", async (req, res) => {
         }
 
         const latest = files[0];
+
+        if (fs.existsSync(stockSummaryPath)) {
+            try {
+                const summary = JSON.parse(fs.readFileSync(stockSummaryPath, "utf8"));
+                if (summary.file === latest.name && summary.source === "strator_official_value") {
+                    return res.json(summary);
+                }
+            } catch (summaryError) {
+                console.error("Error leyendo resumen oficial de stock:", summaryError);
+            }
+        }
+
         const content = fs.readFileSync(latest.path, "latin1");
         const lines = content.split(/\r?\n/).filter(Boolean);
 

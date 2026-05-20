@@ -37,6 +37,7 @@ class GeminiService {
 
     - Fecha (Date)
     - Emisor Factura (Nombre de la empresa o emisor)
+    - Facturado a / Razón Social / Cliente si aparece en la factura
     - Número Factura (Referencia)
     - Subtotal (Base imponible/Sin IVA)
     - Total IVA (Importe del IVA)
@@ -45,11 +46,12 @@ class GeminiService {
 
     IMPORTANTE: En algunas facturas como las de "Logista", el Recargo de Equivalencia (R.EQ.) y el IVA están en columnas. Busca la suma debajo de estas columnas.
     REGLA MURSHE: En las facturas de "Distribuciones Murshe S.L", el Nº Factura está justo debajo del nombre y tiene el formato "XX / XXXXXXXX" (ejemplo: 26 / 26011494). Extráelo completo.
-    
+
     
     Devuelve los datos estrictamente en formato JSON con estas claves exactas:
     {
       "emisor": "Nombre del emisor",
+      "facturado_a": "Razón social o cliente facturado si aparece",
       "fecha_emision": "YYYY-MM-DD",
       "referencia": "Número de factura",
       "subtotal": 0.0,
@@ -62,6 +64,7 @@ class GeminiService {
     NOTAS:
     - total_impuestos debe ser la suma de iva + r_eq.
     - Si un valor no se encuentra, usa 0.0 para campos numéricos y "" para cadenas.
+    - Si el emisor es "CARLOS GOMEZ DE LA CASA", revisa especialmente si aparece una línea de "Facturado a", "Razón Social" o cliente y copia ese valor en facturado_a.
     - Asegúrate de que los campos numéricos sean floats con punto como separador decimal.
     `;
 

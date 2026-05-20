@@ -3,6 +3,8 @@ import SmartCard from './SmartCard';
 import InvoiceTable from './InvoiceTable';
 import { isIncomeType } from '../utils/invoiceTypes';
 
+const STOCK_INICIAL_2026 = 78717.37;
+
 export default function Dashboard({ apiBase, user }) {
     const [invoices, setInvoices] = useState([]);
     const [cashHistory, setCashHistory] = useState([]);
@@ -154,6 +156,9 @@ export default function Dashboard({ apiBase, user }) {
     const stats = useMemo(() => {
         const cashIncome = filteredCashHistory.reduce((acc, record) => acc + Number(record.importe_ventas_iva_incl_num || 0), 0);
         const cashVatOut = filteredCashHistory.reduce((acc, record) => acc + Number(record.iva_repercutido_num || 0), 0);
+        const isLotteryIncome = (inv) => (inv.reference || '').startsWith('LOTERIAS-');
+        const isPhoneRechargeCommission = (inv) => (inv.reference || '').startsWith('COMISION-RECARGAS-TELEFONICAS-');
+        const isInvoicePaymentCommission = (inv) => (inv.reference || '').startsWith('COMISION-PAGO-FACTURAS-');
         const summary = filteredInvoices.reduce((acc, inv) => {
             const type = inv.invoice_type || 'expense';
             const total = parseFloat(inv.total || 0);
@@ -164,6 +169,9 @@ export default function Dashboard({ apiBase, user }) {
                 acc.total_income += total;
                 acc.iva_repercutido += iva;
                 acc.income_count += 1;
+                if (isLotteryIncome(inv)) acc.lottery_income += total;
+                if (isPhoneRechargeCommission(inv)) acc.phone_recharge_commission += total;
+                if (isInvoicePaymentCommission(inv)) acc.invoice_payment_commission += total;
             } else {
                 acc.total_expense += total;
                 acc.iva_soportado += iva;
@@ -172,7 +180,7 @@ export default function Dashboard({ apiBase, user }) {
             }
             acc.invoice_count += 1;
             return acc;
-        }, { total_income: 0, total_expense: 0, iva_soportado: 0, iva_repercutido: 0, total_req: 0, income_count: 0, expense_count: 0, invoice_count: 0 });
+        }, { total_income: 0, total_expense: 0, iva_soportado: 0, iva_repercutido: 0, total_req: 0, lottery_income: 0, phone_recharge_commission: 0, invoice_payment_commission: 0, income_count: 0, expense_count: 0, invoice_count: 0 });
 
         // Cálculo de Top Emisor de gasto
         const emisorMap = filteredInvoices
@@ -187,14 +195,22 @@ export default function Dashboard({ apiBase, user }) {
             .sort((a, b) => b.total - a.total)[0];
 
         const invoiceIncome = summary.total_income;
-        const totalIncome = invoiceIncome + cashIncome;
+        const otherIncome = invoiceIncome - summary.lottery_income - summary.phone_recharge_commission - summary.invoice_payment_commission;
+        const stockTotal = stockSummary?.file ? Number(stockSummary.total_stock_value || 0) : STOCK_INICIAL_2026;
+        const incomeInKind = stockTotal - STOCK_INICIAL_2026;
+        const totalIncome = invoiceIncome + cashIncome + incomeInKind;
         const net = totalIncome - summary.total_expense;
 
         return {
             summary: {
                 ...summary,
                 cash_income: cashIncome.toFixed(2),
-                invoice_income: invoiceIncome.toFixed(2),
+                invoice_income: otherIncome.toFixed(2),
+                lottery_income: summary.lottery_income.toFixed(2),
+                phone_recharge_commission: summary.phone_recharge_commission.toFixed(2),
+                invoice_payment_commission: summary.invoice_payment_commission.toFixed(2),
+                income_in_kind: incomeInKind.toFixed(2),
+                stock_initial: STOCK_INICIAL_2026.toFixed(2),
                 total_income: totalIncome.toFixed(2),
                 total_expense: summary.total_expense.toFixed(2),
                 iva_soportado: summary.iva_soportado.toFixed(2),
@@ -206,7 +222,7 @@ export default function Dashboard({ apiBase, user }) {
             },
             topEmisor
         };
-    }, [filteredInvoices, filteredCashHistory]);
+    }, [filteredInvoices, filteredCashHistory, stockSummary]);
 
     if (loading) return <div style={{ color: 'var(--text-muted)' }}>Cargando datos...</div>;
 
@@ -225,7 +241,7 @@ export default function Dashboard({ apiBase, user }) {
                 <SmartCard
                     title="Ingresos"
                     value={`${stats.summary.total_income}€`}
-                    subtext={`Z caja: ${stats.summary.cash_income}€ / Otros: ${stats.summary.invoice_income}€`}
+                    subtext={`Z caja: ${stats.summary.cash_income}€ / Otros: ${stats.summary.invoice_income}€ / Loterías: ${stats.summary.lottery_income}€ / Recargas: ${stats.summary.phone_recharge_commission}€ / Pago facturas: ${stats.summary.invoice_payment_commission}€ / Ingreso en especie: ${stats.summary.income_in_kind}€`}
                     icon="📈"
                     color="var(--success)"
                 />
@@ -253,7 +269,7 @@ export default function Dashboard({ apiBase, user }) {
                 <SmartCard
                     title="Stock"
                     value={`${Number(stockSummary?.total_stock_value || 0).toFixed(2)}€`}
-                    subtext={stockSummary?.file ? `${stockSummary.total_units} uds / ${stockSummary.product_count} productos` : 'Sin descarga de stock'}
+                    subtext={stockSummary?.file ? `${stockSummary.total_units} uds / ${stockSummary.product_count} productos / Stock inicial: ${stats.summary.stock_initial}€` : `Sin descarga de stock / Stock inicial: ${stats.summary.stock_initial}€`}
                     icon="📦"
                     color="#0f766e"
                 />

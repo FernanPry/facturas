@@ -7,6 +7,7 @@ import {
     Receipt, 
     CreditCard, 
     Hash,
+    Package,
     Search,
     Calendar,
     ChevronDown
@@ -27,9 +28,12 @@ import {
     Legend
 } from 'recharts';
 
+const STOCK_INICIAL_2026 = 78717.37;
+
 const FinanceDashboard = ({ apiBase, user }) => {
     const [invoices, setInvoices] = useState([]);
     const [cashHistory, setCashHistory] = useState([]);
+    const [stockSummary, setStockSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [filterTerm, setFilterTerm] = useState('');
     const [selectedQuarter, setSelectedQuarter] = useState('all'); // all, Q1, Q2, Q3, Q4
@@ -42,11 +46,14 @@ const FinanceDashboard = ({ apiBase, user }) => {
     const fetchInvoices = async () => {
         try {
             const token = localStorage.getItem('token');
-            const [invoiceRes, cashRes] = await Promise.all([
+            const [invoiceRes, cashRes, stockRes] = await Promise.all([
                 fetch(`${apiBase}/invoices`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 }),
                 fetch(`${apiBase}/cash-history`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }),
+                fetch(`${apiBase}/stock-summary`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 })
             ]);
@@ -57,6 +64,10 @@ const FinanceDashboard = ({ apiBase, user }) => {
             if (cashRes.ok) {
                 const data = await cashRes.json();
                 setCashHistory(Array.isArray(data) ? data : []);
+            }
+            if (stockRes.ok) {
+                const data = await stockRes.json();
+                setStockSummary(data);
             }
         } catch (error) {
             console.error("Error fetching data for dashboard:", error);
@@ -115,6 +126,9 @@ const FinanceDashboard = ({ apiBase, user }) => {
     const stats = useMemo(() => {
         const cashIncome = filteredCashHistory.reduce((acc, record) => acc + Number(record.importe_ventas_iva_incl_num || 0), 0);
         const cashVatOut = filteredCashHistory.reduce((acc, record) => acc + Number(record.iva_repercutido_num || 0), 0);
+        const isLotteryIncome = (inv) => (inv.reference || '').startsWith('LOTERIAS-');
+        const isPhoneRechargeCommission = (inv) => (inv.reference || '').startsWith('COMISION-RECARGAS-TELEFONICAS-');
+        const isInvoicePaymentCommission = (inv) => (inv.reference || '').startsWith('COMISION-PAGO-FACTURAS-');
         const totals = filteredInvoices.reduce((acc, curr) => {
             const type = curr.invoice_type || 'expense';
             const total = Number(curr.total || 0);
@@ -124,6 +138,9 @@ const FinanceDashboard = ({ apiBase, user }) => {
                 acc.income += total;
                 acc.vatOut += iva;
                 acc.incomeCount += 1;
+                if (isLotteryIncome(curr)) acc.lotteryIncome += total;
+                if (isPhoneRechargeCommission(curr)) acc.phoneRechargeCommission += total;
+                if (isInvoicePaymentCommission(curr)) acc.invoicePaymentCommission += total;
             } else {
                 acc.expense += total;
                 acc.vatIn += iva;
@@ -132,7 +149,7 @@ const FinanceDashboard = ({ apiBase, user }) => {
             }
             acc.count += 1;
             return acc;
-        }, { income: 0, expense: 0, vatIn: 0, vatOut: 0, req: 0, count: 0, incomeCount: 0, expenseCount: 0 });
+        }, { income: 0, expense: 0, vatIn: 0, vatOut: 0, req: 0, lotteryIncome: 0, phoneRechargeCommission: 0, invoicePaymentCommission: 0, count: 0, incomeCount: 0, expenseCount: 0 });
 
         const calcInvoiceNet = (items) => items.reduce((acc, curr) => {
             const sign = isIncomeType(curr.invoice_type || 'expense') ? 1 : -1;
@@ -167,21 +184,30 @@ const FinanceDashboard = ({ apiBase, user }) => {
             .reduce((acc, record) => acc + Number(record.importe_ventas_iva_incl_num || 0), 0);
 
         const trend = prevMonthNet === 0 ? 0 : ((currentMonthNet - prevMonthNet) / Math.abs(prevMonthNet)) * 100;
+        const stockTotal = stockSummary?.file ? Number(stockSummary.total_stock_value || 0) : STOCK_INICIAL_2026;
+        const incomeInKind = stockTotal - STOCK_INICIAL_2026;
 
         return {
             ...totals,
-            invoiceIncome: totals.income,
+            invoiceIncome: totals.income - totals.lotteryIncome - totals.phoneRechargeCommission - totals.invoicePaymentCommission,
+            lotteryIncome: totals.lotteryIncome,
+            phoneRechargeCommission: totals.phoneRechargeCommission,
+            invoicePaymentCommission: totals.invoicePaymentCommission,
             cashIncome,
             cashVatOut,
-            income: totals.income + cashIncome,
-            net: totals.income + cashIncome - totals.expense,
+            incomeInKind,
+            stockInitial: STOCK_INICIAL_2026,
+            stockTotal,
+            hasStockSummary: Boolean(stockSummary?.file),
+            income: totals.income + cashIncome + incomeInKind,
+            net: totals.income + cashIncome + incomeInKind - totals.expense,
             vatOut: totals.vatOut + cashVatOut,
             invoiceVatOut: totals.vatOut,
             vatNet: totals.vatOut + cashVatOut - totals.vatIn,
             trend: trend.toFixed(1),
             isTrendPositive: trend >= 0
         };
-    }, [filteredInvoices, filteredCashHistory, invoices, cashHistory]);
+    }, [filteredInvoices, filteredCashHistory, invoices, cashHistory, stockSummary]);
 
     // 2. Gráfico de Área (Resultado Mensual por Actividad)
     const areaData = useMemo(() => {
@@ -304,7 +330,7 @@ const FinanceDashboard = ({ apiBase, user }) => {
             </div>
 
             {/* FILA DE KPIs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <KPICard 
                     title="Ingresos" 
                     value={`${stats.income.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
@@ -312,7 +338,7 @@ const FinanceDashboard = ({ apiBase, user }) => {
                     trend={stats.trend}
                     isPositive={stats.isTrendPositive}
                     color="indigo"
-                    label={`Z caja ${stats.cashIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Otros ${stats.invoiceIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
+                    label={`Z caja ${stats.cashIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Otros ${stats.invoiceIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Loterías ${stats.lotteryIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Recargas ${stats.phoneRechargeCommission.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Pago facturas ${stats.invoicePaymentCommission.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Ingreso en especie ${stats.incomeInKind.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
                 />
                 <KPICard 
                     title="Gastos" 
@@ -334,6 +360,13 @@ const FinanceDashboard = ({ apiBase, user }) => {
                     icon={<Hash className="w-5 h-5" />}
                     color="emerald"
                     label={`${stats.count} facturas + ${filteredCashHistory.length} cierres / R.EQ ${stats.req.toFixed(2)}€`}
+                />
+                <KPICard 
+                    title="Stock" 
+                    value={`${(stats.hasStockSummary ? stats.stockTotal : 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
+                    icon={<Package className="w-5 h-5" />}
+                    color="teal"
+                    label={`${stats.hasStockSummary ? 'Stock actual' : 'Sin descarga de stock'} / Stock inicial ${stats.stockInitial.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
                 />
             </div>
 
@@ -492,14 +525,16 @@ const KPICard = ({ title, value, icon, trend, isPositive, color, label }) => {
         indigo: 'bg-indigo-500',
         purple: 'bg-purple-500',
         rose: 'bg-rose-500',
-        emerald: 'bg-emerald-500'
+        emerald: 'bg-emerald-500',
+        teal: 'bg-teal-500'
     };
     
     const softColors = {
         indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400',
         purple: 'bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400',
         rose: 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400',
-        emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
+        emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400',
+        teal: 'bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400'
     };
 
     return (
