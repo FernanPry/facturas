@@ -168,18 +168,19 @@ class EmailWorker {
                 mimeType: f.mimeType
             }));
 
-            const result = await gemini.extractInvoiceData(geminiFiles, user.r_eq);
+            let result = await gemini.extractInvoiceData(geminiFiles, user.r_eq);
+            result = db.prepareInvoiceData(result, result);
 
-            // Validaciones de duplicados
-            const duplicateRef = await db.checkDuplicateReference(user.id, result.referencia);
+            // Validaciones de duplicados después de aplicar reglas de normalización.
+            const duplicateInvoice = await db.checkDuplicateInvoice(user.id, result, result);
             const duplicateAmount = await db.checkDuplicateAmountDate(user.id, result.total, result.fecha_emision);
 
             let alertMessage = "";
             let emailSubject = "✅ Factura procesada correctamente";
 
-            if (duplicateRef) {
+            if (duplicateInvoice.invoice) {
                 return await this.sendAlert(user.email, "⚠️ Factura Duplicada",
-                    `Hola ${user.name},\n\nLa factura con referencia "${result.referencia}" ya existe en el sistema. NO se ha guardado de nuevo para evitar duplicidad.`);
+                    `Hola ${user.name},\n\nLa factura "${duplicateInvoice.invoice.reference || result.referencia}" ya existe en el sistema. NO se ha guardado de nuevo para evitar duplicidad.`);
             } else if (duplicateAmount) {
                 alertMessage += `\n⚠️ AVISO: Se ha detectado otra factura con el mismo importe (${result.total}€) y fecha (${result.fecha_emision}). Revisa si es un duplicado.`;
                 emailSubject = "⚠️ Aviso en factura procesada";

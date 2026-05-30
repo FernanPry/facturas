@@ -1,0 +1,5 @@
+month;snapshot_date;snapshot_time;total_stock_value;source;total_units;product_count;calculated_retail_stock_value;file;note
+"2026-01";"2026-01-01";"";"78717.37";"known_initial_stock_config";"";"";"";"";"Stock inicial configurado para 1 de enero de 2026; no es cierre de mes."
+"2026-01";"2026-01-31";"";"119329.26";"manual_official_value";"";"";"";"";"Valor oficial de stock de enero comunicado por Perykles el 2026-05-27."
+"2026-02";"2026-02-28";"";"74888.03";"manual_official_value";"";"";"";"";"Valor oficial de stock de febrero comunicado por Perykles el 2026-05-27."
+"2026-05";"2026-05-29";"2030";"106732.04";"strator_official_value";"33925";"2370";"123076.75";"/home/charly/Descargas/Listado de productos activos 20260529-2030.csv";"Valor oficial leído de Strator y guardado en stock_summary.json."

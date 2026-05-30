@@ -1,6 +1,6 @@
 const { Pool } = require("pg");
 
-const VALID_INVOICE_TYPES = ['expense', 'income', 'other_expense', 'other_income'];
+const VALID_INVOICE_TYPES = ['expense', 'income', 'other_expense', 'labor_expense', 'other_income'];
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -78,21 +78,95 @@ const getRawInvoiceText = (...values) => values
     .map(value => typeof value === "string" ? value : JSON.stringify(value))
     .join(" ");
 
+const isGestoraComercialMixtosInvoice = (data, rawResponse) => {
+    const rawText = normalizeIssuerName(getRawInvoiceText(data, rawResponse));
+    return rawText.includes("gestora comercial de los mixtos")
+        && (rawText.includes("auto factura") || rawText.includes("autofactura") || rawText.includes("amz"));
+};
+
+const applyGestoraComercialMixtosRule = (data, rawResponse) => {
+    if (!isGestoraComercialMixtosInvoice(data, rawResponse)) return data;
+
+    const rawReferencia = String(data?.referencia || "").trim();
+    const match = rawReferencia.match(/(?:AMZ\s*)?(\d+)/i);
+    const referencia = match ? `AMZ ${match[1]}` : rawReferencia;
+
+    return {
+        ...data,
+        emisor: "GESTORA COMERCIAL DE LOS MIXTOS S.L.U.",
+        referencia,
+    };
+};
+
 const applyCarlosGomezInvoiceLabel = (emisor, data, rawResponse) => {
     const normalizedEmisor = normalizeIssuerName(emisor);
-    if (normalizedEmisor !== "carlos gomez de la casa") return emisor;
-
     const rawText = normalizeIssuerName(getRawInvoiceText(data, rawResponse));
+    const hasCarlos = normalizedEmisor === "carlos gomez de la casa" || rawText.includes("carlos gomez de la casa");
+
+    // Algunas autofacturas de Carlos se leen al revés: Gemini puede tomar el
+    // cliente/facturado a como emisor. Si en el documento aparecen Carlos y el
+    // cliente conocido, mantenemos a Carlos como emisor con su etiqueta.
+    if (!hasCarlos) return emisor;
 
     if (rawText.includes("celeritas") && rawText.includes("transporte")) {
         return "CARLOS GOMEZ DE LA CASA (Celeritas)";
     }
 
-    if (rawText.includes("cloud vending")) {
+    if (rawText.includes("cloud vending") || rawText.includes("cloud vendig")) {
         return "CARLOS GOMEZ DE LA CASA (Cloud vending)";
     }
 
     return emisor;
+};
+
+const getQuarterEndDate = (year, quarter) => {
+    const quarterEnds = {
+        1: `${year}-03-31`,
+        2: `${year}-06-30`,
+        3: `${year}-09-30`,
+        4: `${year}-12-31`,
+    };
+    return quarterEnds[quarter] || null;
+};
+
+const getCloudVendingQuarterEndDate = (data, rawResponse) => {
+    const rawOriginal = getRawInvoiceText(data, rawResponse);
+    const rawNormalized = normalizeIssuerName(rawOriginal);
+
+    const yearMatch = rawOriginal.match(/\b(20\d{2})\b/);
+    const year = yearMatch ? Number(yearMatch[1]) : null;
+
+    if (year) {
+        if (rawNormalized.includes("primer trimestre") || rawNormalized.includes("1 trimestre") || rawNormalized.includes("1er trimestre")) return getQuarterEndDate(year, 1);
+        if (rawNormalized.includes("segundo trimestre") || rawNormalized.includes("2 trimestre")) return getQuarterEndDate(year, 2);
+        if (rawNormalized.includes("tercer trimestre") || rawNormalized.includes("3 trimestre") || rawNormalized.includes("3er trimestre")) return getQuarterEndDate(year, 3);
+        if (rawNormalized.includes("cuarto trimestre") || rawNormalized.includes("4 trimestre")) return getQuarterEndDate(year, 4);
+    }
+
+    const periodMatch = rawOriginal.match(/\b\d{1,2}[\/-]\d{1,2}[\/-](20\d{2})\s*-\s*(\d{1,2})[\/-](\d{1,2})[\/-](20\d{2})\b/);
+    if (periodMatch) {
+        const [, , endDay, endMonth, endYear] = periodMatch;
+        return `${endYear}-${String(endMonth).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`;
+    }
+
+    if (data?.fecha_emision && /^\d{4}-\d{2}-\d{2}$/.test(data.fecha_emision)) {
+        const [dateYear, month] = data.fecha_emision.split("-").map(Number);
+        return getQuarterEndDate(dateYear, Math.ceil(month / 3));
+    }
+
+    return null;
+};
+
+const prepareInvoiceData = (data, rawResponse) => {
+    const prepared = applyGestoraComercialMixtosRule({ ...data }, rawResponse);
+
+    prepared.emisor = applyCarlosGomezInvoiceLabel(prepared.emisor, prepared, rawResponse);
+
+    if (prepared.emisor === "CARLOS GOMEZ DE LA CASA (Cloud vending)") {
+        prepared.fecha_emision = getCloudVendingQuarterEndDate(prepared, rawResponse) || prepared.fecha_emision;
+    }
+
+    return prepared;
 };
 
 const getCanonicalEmisor = async (userId, newName) => {
@@ -144,6 +218,8 @@ const findUserByEmail = async (email) => {
  * Guardar factura extraída
  */
 const saveInvoice = async (userId, data, channel, rawResponse, filePath = null) => {
+    data = prepareInvoiceData(data, rawResponse);
+
     let {
         emisor,
         fecha_emision,
@@ -154,9 +230,6 @@ const saveInvoice = async (userId, data, channel, rawResponse, filePath = null) 
         total_impuestos,
         total
     } = data;
-
-    // Regla específica: conservar Carlos como emisor y añadir etiqueta del facturado a.
-    emisor = applyCarlosGomezInvoiceLabel(emisor, data, rawResponse);
 
     // Normalización: Agrupación difusa (Fuzzy Matching)
     emisor = await getCanonicalEmisor(userId, emisor);
@@ -194,11 +267,39 @@ const saveInvoice = async (userId, data, channel, rawResponse, filePath = null) 
  */
 const checkDuplicateReference = async (userId, reference) => {
     if (!reference) return null;
+    const normalizedReference = String(reference).trim().replace(/\s+/g, " ").toUpperCase();
     const res = await query(
-        "SELECT * FROM invoices WHERE user_id = $1 AND reference = $2",
-        [userId, reference]
+        `SELECT * FROM invoices
+         WHERE user_id = $1
+           AND upper(regexp_replace(trim(reference), '\\s+', ' ', 'g')) = $2`,
+        [userId, normalizedReference]
     );
     return res.rows[0];
+};
+
+/**
+ * Verificar duplicado fuerte: misma referencia normalizada o mismo emisor, fecha e importe.
+ */
+const checkDuplicateInvoice = async (userId, data, rawResponse = data) => {
+    const prepared = prepareInvoiceData(data, rawResponse);
+    const duplicateRef = await checkDuplicateReference(userId, prepared.referencia);
+    if (duplicateRef) return { reason: "reference", invoice: duplicateRef, prepared };
+
+    if (prepared.emisor && prepared.fecha_emision && prepared.total !== undefined && prepared.total !== null) {
+        const res = await query(
+            `SELECT * FROM invoices
+             WHERE user_id = $1
+               AND emisor = $2
+               AND invoice_date = $3
+               AND total = $4
+             ORDER BY id DESC
+             LIMIT 1`,
+            [userId, prepared.emisor, prepared.fecha_emision, prepared.total]
+        );
+        if (res.rows[0]) return { reason: "same_emisor_date_total", invoice: res.rows[0], prepared };
+    }
+
+    return { reason: null, invoice: null, prepared };
 };
 
 /**
@@ -392,8 +493,10 @@ module.exports = {
     findUserByTelegramId,
     findUserByPhone,
     findUserByEmail,
+    prepareInvoiceData,
     saveInvoice,
     checkDuplicateReference,
+    checkDuplicateInvoice,
     checkDuplicateAmountDate,
     deleteInvoice,
     getInvoiceById,

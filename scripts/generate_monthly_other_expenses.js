@@ -53,7 +53,7 @@ async function ensureIssuers(client) {
   for (const expense of CONFIG.expenses) {
     await client.query(`
       INSERT INTO user_issuers (user_id, emisor_name, activity_id, invoice_type)
-      VALUES ($1, $2, $3, 'other_expense')
+      VALUES ($1, $2, $3, 'labor_expense')
       ON CONFLICT (user_id, emisor_name)
       DO UPDATE SET activity_id = EXCLUDED.activity_id, invoice_type = EXCLUDED.invoice_type;
     `, [CONFIG.userId, expense.issuer, CONFIG.activityId]);
@@ -82,7 +82,7 @@ async function createForMonth(client, monthDate) {
 
     const raw = {
       generado_automaticamente: true,
-      tipo: 'other_expense',
+      tipo: 'labor_expense',
       periodicidad: 'mensual',
       emisor: expense.issuer,
       mes: month,
@@ -94,7 +94,7 @@ async function createForMonth(client, monthDate) {
       INSERT INTO invoices (
         user_id, emisor, invoice_date, reference, subtotal, iva, r_eq, total_taxes, total,
         ingestion_channel, raw_ai_response, file_path, actividad, is_other_expense, invoice_type
-      ) VALUES ($1,$2,$3,$4,$5,0,0,0,$6,$7,$8,NULL,$9,false,'other_expense')
+      ) VALUES ($1,$2,$3,$4,$5,0,0,0,$6,$7,$8,NULL,$9,false,'labor_expense')
       RETURNING id, emisor, invoice_date, reference, total, actividad, invoice_type;
     `, [
       CONFIG.userId,

@@ -46,6 +46,7 @@ class GeminiService {
 
     IMPORTANTE: En algunas facturas como las de "Logista", el Recargo de Equivalencia (R.EQ.) y el IVA están en columnas. Busca la suma debajo de estas columnas.
     REGLA MURSHE: En las facturas de "Distribuciones Murshe S.L", el Nº Factura está justo debajo del nombre y tiene el formato "XX / XXXXXXXX" (ejemplo: 26 / 26011494). Extráelo completo.
+    REGLA GESTORA MIXTOS: En autofacturas "Auto factura: AMZ" donde aparezca "GESTORA COMERCIAL DE LOS MIXTOS S.L.U.", el emisor debe ser exactamente "GESTORA COMERCIAL DE LOS MIXTOS S.L.U." aunque aparezca Carlos/GOMEZ DE LA CASA como receptor. La referencia debe ser "AMZ " seguido del número de factura (ejemplo: si aparece AMZ y número 63389, referencia = "AMZ 63389").
 
     
     Devuelve los datos estrictamente en formato JSON con estas claves exactas:
@@ -64,7 +65,9 @@ class GeminiService {
     NOTAS:
     - total_impuestos debe ser la suma de iva + r_eq.
     - Si un valor no se encuentra, usa 0.0 para campos numéricos y "" para cadenas.
+    - No confundas el emisor con el destinatario: si arriba figura "CARLOS GOMEZ DE LA CASA" y debajo aparece "Facturar a", "Facturado a", "Razón Social" o cliente, el emisor debe ser "CARLOS GOMEZ DE LA CASA" y ese destinatario debe ir en facturado_a.
     - Si el emisor es "CARLOS GOMEZ DE LA CASA", revisa especialmente si aparece una línea de "Facturado a", "Razón Social" o cliente y copia ese valor en facturado_a.
+    - Si es un ingreso/autofactura trimestral de CARLOS GOMEZ DE LA CASA para Cloud Vending, fecha_emision debe ser el último día del trimestre indicado: primer trimestre 31/03, segundo 30/06, tercer 30/09, cuarto 31/12.
     - Asegúrate de que los campos numéricos sean floats con punto como separador decimal.
     `;
 

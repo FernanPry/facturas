@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { isIncomeType } from '../utils/invoiceTypes';
+import { isIncomeType, isRealExpenseType, isStockPurchaseType } from '../utils/invoiceTypes';
 import { 
     TrendingUp, 
     TrendingDown, 
@@ -146,10 +146,18 @@ const FinanceDashboard = ({ apiBase, user }) => {
                 acc.vatIn += iva;
                 acc.req += req;
                 acc.expenseCount += 1;
+                if (isStockPurchaseType(type)) {
+                    acc.stockPurchases += total;
+                    acc.stockPurchaseCount += 1;
+                }
+                if (isRealExpenseType(type)) {
+                    acc.realExpenses += total;
+                    acc.realExpenseCount += 1;
+                }
             }
             acc.count += 1;
             return acc;
-        }, { income: 0, expense: 0, vatIn: 0, vatOut: 0, req: 0, lotteryIncome: 0, phoneRechargeCommission: 0, invoicePaymentCommission: 0, count: 0, incomeCount: 0, expenseCount: 0 });
+        }, { income: 0, expense: 0, stockPurchases: 0, realExpenses: 0, vatIn: 0, vatOut: 0, req: 0, lotteryIncome: 0, phoneRechargeCommission: 0, invoicePaymentCommission: 0, count: 0, incomeCount: 0, expenseCount: 0, stockPurchaseCount: 0, realExpenseCount: 0 });
 
         const calcInvoiceNet = (items) => items.reduce((acc, curr) => {
             const sign = isIncomeType(curr.invoice_type || 'expense') ? 1 : -1;
@@ -341,11 +349,11 @@ const FinanceDashboard = ({ apiBase, user }) => {
                     label={`Z caja ${stats.cashIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Otros ${stats.invoiceIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Loterías ${stats.lotteryIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Recargas ${stats.phoneRechargeCommission.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Pago facturas ${stats.invoicePaymentCommission.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Ingreso en especie ${stats.incomeInKind.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
                 />
                 <KPICard 
-                    title="Gastos" 
-                    value={`${stats.expense.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
+                    title="Gastos reales" 
+                    value={`${stats.realExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
                     icon={<Receipt className="w-5 h-5" />}
                     color="purple"
-                    label={`${stats.expenseCount} facturas recibidas`}
+                    label={`Compras stock ${stats.stockPurchases.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ / Total salidas ${stats.expense.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
                 />
                 <KPICard 
                     title="IVA neto" 
@@ -359,7 +367,7 @@ const FinanceDashboard = ({ apiBase, user }) => {
                     value={`${stats.net.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€`}
                     icon={<Hash className="w-5 h-5" />}
                     color="emerald"
-                    label={`${stats.count} facturas + ${filteredCashHistory.length} cierres / R.EQ ${stats.req.toFixed(2)}€`}
+                    label={`${stats.count} facturas + ${filteredCashHistory.length} cierres / incluye compras stock + variación de stock / R.EQ ${stats.req.toFixed(2)}€`}
                 />
                 <KPICard 
                     title="Stock" 
@@ -473,7 +481,7 @@ const FinanceDashboard = ({ apiBase, user }) => {
                 
                 {/* TOP 10 EMISORES */}
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                    <h4 className="font-bold text-slate-800 dark:text-slate-100 mb-8">Top 10 Proveedores por Gasto</h4>
+                    <h4 className="font-bold text-slate-800 dark:text-slate-100 mb-8">Top 10 Proveedores por Compras/Gastos</h4>
                     <div className="h-[400px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart 

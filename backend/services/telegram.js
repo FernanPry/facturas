@@ -193,15 +193,16 @@ class TelegramService {
                 mimeType: f.mimeType
             }));
 
-            const result = await gemini.extractInvoiceData(geminiFiles, user.r_eq);
+            let result = await gemini.extractInvoiceData(geminiFiles, user.r_eq);
+            result = db.prepareInvoiceData(result, result);
 
-            // Validaciones de duplicados
-            const duplicateRef = await db.checkDuplicateReference(user.id, result.referencia);
+            // Validaciones de duplicados después de aplicar reglas de normalización.
+            const duplicateInvoice = await db.checkDuplicateInvoice(user.id, result, result);
             const duplicateAmount = await db.checkDuplicateAmountDate(user.id, result.total, result.fecha_emision);
 
             let alertMessage = "";
-            if (duplicateRef) {
-                return await ctx.reply(`⚠️ ¡ALARMA!: La factura con referencia "${result.referencia}" ya existe. NO se ha vuelto a guardar.`);
+            if (duplicateInvoice.invoice) {
+                return await ctx.reply(`⚠️ ¡ALARMA!: La factura "${duplicateInvoice.invoice.reference || result.referencia}" ya existe. NO se ha vuelto a guardar para evitar duplicidad.`);
             } else if (duplicateAmount) {
                 alertMessage += `\n⚠️ AVISO: Se ha detectado otra factura con el mismo importe (${result.total}€) y fecha (${result.fecha_emision}). Revisa si es un duplicado.`;
             }

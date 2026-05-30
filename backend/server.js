@@ -355,15 +355,17 @@ app.post("/api/invoices/upload", upload.single("invoice"), async (req, res) => {
         }];
 
         console.log("[UPLOAD] Enviando a Gemini AI...");
-        const result = await gemini.extractInvoiceData(fileData, userData.r_eq);
+        let result = await gemini.extractInvoiceData(fileData, userData.r_eq);
+        result = db.prepareInvoiceData(result, result);
         console.log("[UPLOAD] Resultado IA recibido:", result.emisor, result.total);
 
-        // Validaciones de duplicados
-        const duplicateRef = await db.checkDuplicateReference(userData.id, result.referencia);
-        if (duplicateRef) {
+        // Validaciones de duplicados después de aplicar reglas de normalización.
+        const duplicateInvoice = await db.checkDuplicateInvoice(userData.id, result, result);
+        if (duplicateInvoice.invoice) {
+            const duplicateRefText = duplicateInvoice.invoice.reference || result.referencia;
             return res.json({ 
                 warning: true, 
-                message: `La factura con nº "${result.referencia}" ya existe en tu historial. No se ha guardado de nuevo.`,
+                message: `La factura "${duplicateRefText}" ya existe en tu historial. No se ha guardado de nuevo para evitar duplicidad.`,
                 invoice: result
             });
         }

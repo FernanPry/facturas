@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useRef } from 'react';
 import { INVOICE_TYPES, getInvoiceTypeLabel, isIncomeType } from '../utils/invoiceTypes';
 
 export default function InvoiceTable({
@@ -27,6 +27,8 @@ export default function InvoiceTable({
     const [rowsPerPage, setRowsPerPage] = useState(20);
     const [activities, setActivities] = useState([]);
     const [expandedInvoiceId, setExpandedInvoiceId] = useState(null);
+    const [isInvoiceTypeMenuOpen, setIsInvoiceTypeMenuOpen] = useState(false);
+    const invoiceTypeFilterRef = useRef(null);
 
     // Cargar actividades para el filtro
     useEffect(() => {
@@ -57,6 +59,17 @@ export default function InvoiceTable({
     useEffect(() => {
         setCurrentPage(1);
     }, [filteredInvoices.length, rowsPerPage]);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (invoiceTypeFilterRef.current && !invoiceTypeFilterRef.current.contains(event.target)) {
+                setIsInvoiceTypeMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Cálculo de facturas paginadas
     const totalPages = Math.ceil(filteredInvoices.length / rowsPerPage);
@@ -124,17 +137,44 @@ export default function InvoiceTable({
         document.body.removeChild(link);
     };
 
+    const selectedInvoiceTypes = Array.isArray(invoiceTypeFilter) ? invoiceTypeFilter : [invoiceTypeFilter];
+    const isAllInvoiceTypesSelected = selectedInvoiceTypes.includes('all');
+
+    const toggleInvoiceTypeFilter = (typeValue) => {
+        if (typeValue === 'all') {
+            setInvoiceTypeFilter(['all']);
+            return;
+        }
+
+        const current = isAllInvoiceTypesSelected ? [] : selectedInvoiceTypes;
+        const next = current.includes(typeValue)
+            ? current.filter(value => value !== typeValue)
+            : [...current, typeValue];
+
+        setInvoiceTypeFilter(next.length ? next : ['all']);
+    };
+
     const clearFilters = () => {
         setFilterTerm('');
         setStartDate('');
         setEndDate('');
         setOtherExpenseFilter('all');
-        setInvoiceTypeFilter('all');
+        setInvoiceTypeFilter(['all']);
         setActivityFilter('all');
         setIsQuarterFilterActive(false); // Al limpiar filtros, quitamos el auto-filtro para ver todo
     };
 
-    const hasFilters = filterTerm || startDate || endDate || otherExpenseFilter !== 'all' || invoiceTypeFilter !== 'all' || activityFilter !== 'all';
+    const selectedInvoiceTypeLabels = INVOICE_TYPES
+        .filter(type => selectedInvoiceTypes.includes(type.value))
+        .map(type => type.label);
+    const invoiceTypeFilterLabel = isAllInvoiceTypesSelected
+        ? 'Todos'
+        : selectedInvoiceTypeLabels.length === 1
+            ? selectedInvoiceTypeLabels[0]
+            : `${selectedInvoiceTypeLabels.length} tipos seleccionados`;
+
+    const hasInvoiceTypeFilter = !isAllInvoiceTypesSelected;
+    const hasFilters = filterTerm || startDate || endDate || otherExpenseFilter !== 'all' || hasInvoiceTypeFilter || activityFilter !== 'all';
 
     return (
         <div className="card" style={{ marginTop: '2rem' }}>
@@ -148,19 +188,49 @@ export default function InvoiceTable({
 
                 <div className="flex flex-wrap items-end gap-4 p-4" style={{ background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
 
-                    <div style={{ flex: '0 0 160px' }}>
+                    <div ref={invoiceTypeFilterRef} style={{ flex: '0 0 180px', position: 'relative' }}>
                         <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>TIPO</label>
-                        <select
+                        <button
+                            type="button"
                             className="input-minimal"
-                            value={invoiceTypeFilter}
-                            onChange={(e) => setInvoiceTypeFilter(e.target.value)}
-                            style={{ width: '100%', cursor: 'pointer' }}
+                            onClick={() => setIsInvoiceTypeMenuOpen((current) => !current)}
+                            aria-expanded={isInvoiceTypeMenuOpen}
+                            style={{
+                                width: '100%',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.5rem',
+                                textAlign: 'left'
+                            }}
                         >
-                            <option value="all">Todos</option>
-                            {INVOICE_TYPES.map(type => (
-                                <option key={type.value} value={type.value}>{type.label}</option>
-                            ))}
-                        </select>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{invoiceTypeFilterLabel}</span>
+                            <span aria-hidden="true" style={{ opacity: 0.65 }}>{isInvoiceTypeMenuOpen ? '▴' : '▾'}</span>
+                        </button>
+
+                        {isInvoiceTypeMenuOpen && (
+                            <div className="invoice-type-dropdown-menu">
+                                <label className="invoice-type-dropdown-option">
+                                    <input
+                                        type="checkbox"
+                                        checked={isAllInvoiceTypesSelected}
+                                        onChange={() => toggleInvoiceTypeFilter('all')}
+                                    />
+                                    Todos
+                                </label>
+                                {INVOICE_TYPES.map(type => (
+                                    <label key={type.value} className="invoice-type-dropdown-option">
+                                        <input
+                                            type="checkbox"
+                                            checked={!isAllInvoiceTypesSelected && selectedInvoiceTypes.includes(type.value)}
+                                            onChange={() => toggleInvoiceTypeFilter(type.value)}
+                                        />
+                                        {type.label}
+                                    </label>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div style={{ flex: '0 0 160px' }}>

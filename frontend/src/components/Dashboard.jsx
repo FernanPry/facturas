@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import SmartCard from './SmartCard';
 import InvoiceTable from './InvoiceTable';
-import { isIncomeType } from '../utils/invoiceTypes';
+import { isIncomeType, isRealExpenseType, isStockPurchaseType } from '../utils/invoiceTypes';
 
 const STOCK_INICIAL_2026 = 78717.37;
 
@@ -17,7 +17,7 @@ export default function Dashboard({ apiBase, user }) {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [otherExpenseFilter, setOtherExpenseFilter] = useState('all'); // 'all', 'yes', 'no'
-    const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('all'); // 'all', 'expense', 'income', 'other_expense', 'other_income'
+    const [invoiceTypeFilter, setInvoiceTypeFilter] = useState(['all']); // ['all'] o varios: 'expense', 'income', 'other_expense', 'labor_expense', 'other_income'
     const [activityFilter, setActivityFilter] = useState('all'); // 'all' or activity name
     const [isQuarterFilterActive, setIsQuarterFilterActive] = useState(true);
 
@@ -128,8 +128,9 @@ export default function Dashboard({ apiBase, user }) {
                 (otherExpenseFilter === 'yes' && inv.is_other_expense) ||
                 (otherExpenseFilter === 'no' && !inv.is_other_expense);
 
+            const selectedInvoiceTypes = Array.isArray(invoiceTypeFilter) ? invoiceTypeFilter : [invoiceTypeFilter];
             const matchesActivity = activityFilter === 'all' || inv.actividad === activityFilter;
-            const matchesInvoiceType = invoiceTypeFilter === 'all' || (inv.invoice_type || 'expense') === invoiceTypeFilter;
+            const matchesInvoiceType = selectedInvoiceTypes.includes('all') || selectedInvoiceTypes.includes(inv.invoice_type || 'expense');
 
             return matchesTerm && matchesStart && matchesEnd && matchesOtherExpense && matchesActivity && matchesInvoiceType;
         });
@@ -138,10 +139,11 @@ export default function Dashboard({ apiBase, user }) {
     const filteredCashHistory = useMemo(() => {
         const effectiveStartDate = isQuarterFilterActive ? currentQuarterDates.start : startDate;
         const effectiveEndDate = isQuarterFilterActive ? currentQuarterDates.end : endDate;
+        const selectedInvoiceTypes = Array.isArray(invoiceTypeFilter) ? invoiceTypeFilter : [invoiceTypeFilter];
         const includeCashHistory = !filterTerm.trim()
             && activityFilter === 'all'
             && otherExpenseFilter === 'all'
-            && ['all', 'income'].includes(invoiceTypeFilter);
+            && (selectedInvoiceTypes.includes('all') || selectedInvoiceTypes.includes('income'));
 
         if (!includeCashHistory) return [];
 
@@ -177,10 +179,18 @@ export default function Dashboard({ apiBase, user }) {
                 acc.iva_soportado += iva;
                 acc.total_req += req;
                 acc.expense_count += 1;
+                if (isStockPurchaseType(type)) {
+                    acc.stock_purchases += total;
+                    acc.stock_purchase_count += 1;
+                }
+                if (isRealExpenseType(type)) {
+                    acc.real_expenses += total;
+                    acc.real_expense_count += 1;
+                }
             }
             acc.invoice_count += 1;
             return acc;
-        }, { total_income: 0, total_expense: 0, iva_soportado: 0, iva_repercutido: 0, total_req: 0, lottery_income: 0, phone_recharge_commission: 0, invoice_payment_commission: 0, income_count: 0, expense_count: 0, invoice_count: 0 });
+        }, { total_income: 0, total_expense: 0, stock_purchases: 0, real_expenses: 0, iva_soportado: 0, iva_repercutido: 0, total_req: 0, lottery_income: 0, phone_recharge_commission: 0, invoice_payment_commission: 0, income_count: 0, expense_count: 0, stock_purchase_count: 0, real_expense_count: 0, invoice_count: 0 });
 
         // Cálculo de Top Emisor de gasto
         const emisorMap = filteredInvoices
@@ -213,6 +223,8 @@ export default function Dashboard({ apiBase, user }) {
                 stock_initial: STOCK_INICIAL_2026.toFixed(2),
                 total_income: totalIncome.toFixed(2),
                 total_expense: summary.total_expense.toFixed(2),
+                stock_purchases: summary.stock_purchases.toFixed(2),
+                real_expenses: summary.real_expenses.toFixed(2),
                 iva_soportado: summary.iva_soportado.toFixed(2),
                 iva_repercutido: (summary.iva_repercutido + cashVatOut).toFixed(2),
                 iva_repercutido_facturas: summary.iva_repercutido.toFixed(2),
@@ -237,39 +249,73 @@ export default function Dashboard({ apiBase, user }) {
 
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex flex-wrap gap-4">
+            <div className="dashboard-stats-grid">
                 <SmartCard
                     title="Ingresos"
                     value={`${stats.summary.total_income}€`}
-                    subtext={`Z caja: ${stats.summary.cash_income}€ / Otros: ${stats.summary.invoice_income}€ / Loterías: ${stats.summary.lottery_income}€ / Recargas: ${stats.summary.phone_recharge_commission}€ / Pago facturas: ${stats.summary.invoice_payment_commission}€ / Ingreso en especie: ${stats.summary.income_in_kind}€`}
+                    info="Suma de las entradas del periodo filtrado. Combina ventas registradas en Z de caja, facturas de ingreso y la variación positiva del stock respecto al stock inicial."
+                    details={[
+                        { label: 'Z de caja', value: `${stats.summary.cash_income}€`, description: 'Ventas con IVA incluido importadas desde los cierres diarios de caja.' },
+                        { label: 'Otros ingresos', value: `${stats.summary.invoice_income}€`, description: 'Facturas de ingreso que no pertenecen a loterías, recargas ni pago de facturas.' },
+                        { label: 'Loterías', value: `${stats.summary.lottery_income}€`, description: 'Ingresos identificados por referencias de loterías.' },
+                        { label: 'Recargas', value: `${stats.summary.phone_recharge_commission}€`, description: 'Comisiones por recargas telefónicas.' },
+                        { label: 'Pago facturas', value: `${stats.summary.invoice_payment_commission}€`, description: 'Comisiones por servicios de pago de facturas.' },
+                        { label: 'Ingreso en especie', value: `${stats.summary.income_in_kind}€`, description: `Stock actual menos stock inicial (${stats.summary.stock_initial}€).` }
+                    ]}
                     icon="📈"
                     color="var(--success)"
                 />
                 <SmartCard
-                    title="Gastos"
-                    value={`${stats.summary.total_expense}€`}
-                    subtext={`${stats.summary.expense_count} facturas recibidas`}
+                    title="Gastos reales"
+                    value={`${stats.summary.real_expenses}€`}
+                    info="Gastos estructurales del negocio separados de las compras de mercancía. Sirve para ver el coste real operativo sin mezclarlo con reposición de stock."
+                    details={[
+                        { label: 'Gastos reales', value: `${stats.summary.real_expenses}€`, description: 'Nóminas, autónomos, seguridad social, alquiler, suministros y otros gastos de estructura.' },
+                        { label: 'Compras stock', value: `${stats.summary.stock_purchases}€`, description: 'Facturas marcadas como compra de mercancía o reposición de stock.' },
+                        { label: 'Total salidas', value: `${stats.summary.total_expense}€`, description: 'Suma de gastos reales más compras de stock del periodo filtrado.' }
+                    ]}
                     icon="💸"
                     color="var(--danger)"
                 />
                 <SmartCard
                     title="IVA neto"
                     value={`${(parseFloat(stats.summary.iva_repercutido) - parseFloat(stats.summary.iva_soportado)).toFixed(2)}€`}
-                    subtext={`Rep. ${stats.summary.iva_repercutido}€ (Z ${stats.summary.iva_repercutido_z_caja}€) / Sop. ${stats.summary.iva_soportado}€`}
+                    info="Estimación de IVA a liquidar: IVA repercutido en ventas e ingresos menos IVA soportado en compras y gastos."
+                    details={[
+                        { label: 'IVA repercutido', value: `${stats.summary.iva_repercutido}€`, description: 'IVA cobrado al cliente. Incluye facturas de ingreso y Z de caja.' },
+                        { label: 'De Z de caja', value: `${stats.summary.iva_repercutido_z_caja}€`, description: 'Parte del IVA repercutido procedente de los cierres de caja.' },
+                        { label: 'IVA soportado', value: `${stats.summary.iva_soportado}€`, description: 'IVA pagado en facturas de compras, stock y gastos.' },
+                        { label: 'Recargo equivalencia', value: `${stats.summary.total_req}€`, description: 'R.EQ. acumulado en facturas cuando aparece informado.' }
+                    ]}
                     icon="🏛️"
                     color="var(--primary)"
                 />
                 <SmartCard
                     title="Resultado aprox."
                     value={`${stats.summary.net}€`}
-                    subtext={`Incluye Z caja + ingresos / R.EQ gastos: ${stats.summary.total_req}€`}
+                    info="Resultado orientativo del periodo: ingresos totales menos salidas totales. Tiene en cuenta las compras de stock y la variación del stock para aproximar el margen."
+                    details={[
+                        { label: 'Ingresos totales', value: `${stats.summary.total_income}€`, description: 'Z de caja, otros ingresos, comisiones e ingreso en especie.' },
+                        { label: 'Total salidas', value: `${stats.summary.total_expense}€`, description: 'Compras de stock más gastos reales.' },
+                        { label: 'Variación stock', value: `${stats.summary.income_in_kind}€`, description: 'Stock actual menos stock inicial; ajusta el resultado al valor de mercancía existente.' },
+                        { label: 'R.EQ.', value: `${stats.summary.total_req}€`, description: 'Recargo de equivalencia acumulado, mostrado como referencia fiscal.' }
+                    ]}
                     icon="⚖️"
                     color="#8b5cf6"
                 />
                 <SmartCard
                     title="Stock"
-                    value={`${Number(stockSummary?.total_stock_value || 0).toFixed(2)}€`}
-                    subtext={stockSummary?.file ? `${stockSummary.total_units} uds / ${stockSummary.product_count} productos / Stock inicial: ${stats.summary.stock_initial}€` : `Sin descarga de stock / Stock inicial: ${stats.summary.stock_initial}€`}
+                    value={`${Number(stockSummary?.total_stock_value || STOCK_INICIAL_2026).toFixed(2)}€`}
+                    info="Valor oficial del stock importado desde Strator. Si no hay descarga disponible, se muestra como referencia el stock inicial configurado."
+                    details={stockSummary?.file ? [
+                        { label: 'Unidades', value: `${stockSummary.total_units} uds`, description: 'Suma de unidades existentes en el último listado de stock.' },
+                        { label: 'Productos', value: `${stockSummary.product_count}`, description: 'Número de referencias distintas detectadas en el listado.' },
+                        { label: 'Stock inicial', value: `${stats.summary.stock_initial}€`, description: 'Valor base usado para calcular la variación de stock.' },
+                        { label: 'Variación', value: `${stats.summary.income_in_kind}€`, description: 'Diferencia entre el stock actual y el stock inicial.' }
+                    ] : [
+                        { label: 'Estado', value: 'Sin descarga', description: 'Todavía no hay un listado de stock disponible para este periodo.' },
+                        { label: 'Stock inicial', value: `${stats.summary.stock_initial}€`, description: 'Valor de referencia usado mientras no existe stock descargado.' }
+                    ]}
                     icon="📦"
                     color="#0f766e"
                 />

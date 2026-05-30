@@ -1181,3 +1181,206 @@ td code {
      border-radius: 8px;
   }
 }
+
+.invoice-type-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  width: 260px;
+  max-width: min(260px, calc(100vw - 2rem));
+  z-index: 30;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--bg-main);
+  box-shadow: var(--shadow-lg);
+}
+
+.invoice-type-dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.25rem;
+  border-radius: 0.45rem;
+  cursor: pointer;
+  color: var(--text-main);
+  font-size: 0.85rem;
+}
+
+.invoice-type-dropdown-option:hover {
+  background: var(--bg-secondary);
+}
+
+/* Dashboard summary cards */
+.dashboard-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.smart-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 100%;
+  border-top: 3px solid var(--accent-color);
+  transition: min-height 0.2s ease, box-shadow 0.2s ease;
+}
+
+.smart-card.is-collapsed {
+  min-height: auto;
+}
+
+.smart-card-watermark {
+  position: absolute;
+  top: -18px;
+  right: -12px;
+  font-size: 5rem;
+  opacity: 0.045;
+  transform: rotate(15deg);
+  pointer-events: none;
+}
+
+.smart-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.smart-card-title {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.smart-card-value {
+  font-size: clamp(1.65rem, 3vw, 2rem);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.smart-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+}
+
+.smart-card-icon {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 22%, var(--border));
+  font-size: 1.15rem;
+  flex: 0 0 auto;
+}
+
+.smart-card-toggle {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 28%, var(--border));
+  background: var(--bg-main);
+  color: var(--accent-color);
+  cursor: pointer;
+  font-size: 1.15rem;
+  line-height: 1;
+  font-weight: 800;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.smart-card-toggle:hover {
+  background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-main));
+  transform: translateY(-1px);
+}
+
+.smart-card-toggle[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent-color) 14%, var(--bg-main));
+}
+
+.smart-card-info,
+.smart-card-subtext {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin-bottom: 1rem;
+}
+
+.smart-card-children {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+.smart-card-child {
+  position: relative;
+  padding: 0.75rem;
+  border-radius: 0.8rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.smart-card-child::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--accent-color);
+  opacity: 0.65;
+}
+
+.smart-card-child-label {
+  padding-left: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.1;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.smart-card-child-value {
+  padding-left: 0.45rem;
+  color: var(--text-main);
+  font-size: 1rem;
+  font-weight: 800;
+  margin-top: 0.25rem;
+}
+
+.smart-card-child-description {
+  padding-left: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+  margin-top: 0.3rem;
+}
+
+@media (min-width: 1280px) {
+  .dashboard-stats-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
