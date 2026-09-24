@@ -10,7 +10,8 @@ const storage = require("./services/storage"); // Added
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
-const gemini = require("./services/gemini");
+const invoiceAI = require("./services/gemini");
+const { execFileSync } = require("child_process");
 
 // Configuración de Multer para almacenamiento en disco con aislamiento por usuario
 const fs = require("fs");
@@ -33,6 +34,484 @@ const multerStorage = multer.diskStorage({
 });
 
 const upload = multer({ storage: multerStorage });
+
+const parseEuroAmount = (value) => {
+    if (!value) return 0.0;
+    return parseFloat(String(value).replace(/\s/g, "").replace(/\./g, "").replace(",", ".")) || 0.0;
+};
+
+
+const normalizeText = (value) => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const extractPdfText = (filePath) => {
+    try {
+        return execFileSync("pdftotext", [filePath, "-"], { encoding: "utf8", timeout: 10000 });
+    } catch (error) {
+        console.warn("[UPLOAD] No se pudo extraer texto PDF con pdftotext:", error.message);
+        return null;
+    }
+};
+
+const pdfHasPositiveReq = (filePath, mimeType) => {
+    if (mimeType !== "application/pdf") return false;
+    const text = extractPdfText(filePath);
+    if (!text) return false;
+    const normalized = normalizeText(text);
+    if (!normalized.includes("r.eq") && !normalized.includes("r eq") && !normalized.includes("recargo")) return false;
+
+    // R.EQ. visible como porcentaje en líneas o resumen. Evitamos tratar como positivo
+    // los resúmenes bonificados a cero (p.ej. LogistaPlus usado al 100%).
+    const hasPositiveRate = /(?:%R\.EQ\.|R\.EQ\.)[\s\S]{0,80}(?:1[,.]75|5[,.]20)\s*%?/i.test(text)
+        || /(?:1[,.]75|5[,.]20)\s*%[\s\S]{0,80}(?:TOTAL\s+IMPUESTOS|TOTAL\s+NETO|IMPORTE)/i.test(text);
+    const explicitZeroSummary = /%R\.EQ\.[\s\S]{0,180}IMPORTE\s*\n\s*0[,.]00/i.test(text);
+    return hasPositiveRate && !explicitZeroSummary;
+};
+
+const extractMursheInvoice = (filePath, mimeType) => {
+    if (mimeType !== "application/pdf") return null;
+
+    const text = extractPdfText(filePath);
+    if (!text) return null;
+
+    const normalized = normalizeText(text);
+    if (!normalized.includes("distribuciones murshe")) return null;
+
+    const headerMatch = text.match(/N[ºo]\s*Factura:\s*([0-9]{2}\s*\/\s*[0-9]+)\s*-\s*(\d{2})\/(\d{2})\/(\d{4})/i)
+        || text.match(/N[ºo]\s*Factura\s*[:\-]?\s*([0-9]{2}\s*\/\s*[0-9]+).*?(\d{2})\/(\d{2})\/(\d{4})/is);
+    const facturadoMatch = text.match(/Datos de facturaci[oó]n\s*\n\s*([^\n]+)/i);
+    const totalsSection = text.match(/Total productos[\s\S]*?Forma de pago:/i)?.[0] || text;
+    const euroValues = [...totalsSection.matchAll(/([\d.,]+)\s*€/g)].map(match => {
+        const raw = match[1];
+        return raw.includes(",") ? parseEuroAmount(raw) : (parseFloat(raw) || 0.0);
+    });
+    const totals = euroValues.slice(-4);
+
+    if (!headerMatch || totals.length < 4) return null;
+
+    const referencia = headerMatch[1].replace(/\s*\/\s*/, " / ").trim();
+    const fecha = `${headerMatch[4]}-${headerMatch[3]}-${headerMatch[2]}`;
+    const [subtotal, iva, r_eq, total] = totals;
+
+    return {
+        emisor: "Distribuciones Murshe S.L",
+        facturado_a: facturadoMatch?.[1]?.trim() || "",
+        fecha_emision: fecha,
+        referencia,
+        subtotal,
+        iva,
+        r_eq,
+        total_impuestos: Number((iva + r_eq).toFixed(2)),
+        total
+    };
+};
+
+const extractCloudVendingInvoice = (filePath, mimeType) => {
+    if (mimeType !== "application/pdf") return null;
+
+    const text = extractPdfText(filePath);
+    if (!text) return null;
+
+    const normalized = normalizeText(text);
+    if (!normalized.includes("cloud vending s.l") && !normalized.includes("cloud vending sl")) return null;
+    if (!normalized.includes("cuota de servicios") && !normalized.includes("expendeduria")) return null;
+
+    const periodMatch = text.match(/Facturaci[oó]n:\s*(\d{2})\/(\d{2})\/(\d{4})\s*-\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    const cargoMatch = text.match(/Fecha Cargo:\s*\n\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    const baseMatch = text.match(/Total\s+Neto\s+([\d.,]+)\s*€/i)
+        || text.match(/Base\s+Imponible[\s\S]{0,220}?([\d.,]+)\s*€\s+([\d.,]+)\s*€\s+([\d.,]+)\s*€/i);
+    const ivaMatch = text.match(/Total\s+I\.V\.A\.\s+([\d.,]+)\s*€/i)
+        || text.match(/I\.V\.A\.\s*21%\s*\n\s*Total\s+I\.V\.A\.\s*([\d.,]+)\s*€/i)
+        || text.match(/Base\s+Imponible[\s\S]{0,220}?([\d.,]+)\s*€\s+([\d.,]+)\s*€\s+([\d.,]+)\s*€/i);
+    // En estas facturas aparece una columna llamada "Total" en la línea del servicio
+    // y un resumen final "TOTAL". Hay que priorizar el TOTAL final, no el neto/base.
+    const totalMatch = text.match(/^\s*TOTAL\s+([\d.,]+)\s*€/m)
+        || text.match(/Total\s+I\.V\.A\.[\s\S]{0,120}?^\s*TOTAL\s+([\d.,]+)\s*€/m)
+        || text.match(/Base\s+Imponible[\s\S]{0,220}?([\d.,]+)\s*€\s+([\d.,]+)\s*€\s+([\d.,]+)\s*€/i);
+
+    const endDay = periodMatch?.[4];
+    const endMonth = periodMatch?.[5];
+    const endYear = periodMatch?.[6];
+    // Cloud Vending emite un gasto real mensual por la cuota de servicios.
+    // Contablemente usamos la fecha de cargo si aparece; la referencia conserva
+    // el mes facturado para evitar confundirlo con la autofactura trimestral de Carlos a Cloud Vending.
+    const fecha = cargoMatch
+        ? `${cargoMatch[3]}-${cargoMatch[2]}-${cargoMatch[1]}`
+        : (periodMatch ? `${endYear}-${endMonth}-${endDay}` : "");
+
+    const referencia = periodMatch ? `CLOUD VENDING ${endYear}-${endMonth}` : "CLOUD VENDING";
+    const subtotal = parseEuroAmount(baseMatch?.[1]);
+    const iva = parseEuroAmount(ivaMatch?.[2] || ivaMatch?.[1]);
+    const extractedTotal = parseEuroAmount(totalMatch?.[3] || totalMatch?.[1]);
+    const total = (iva > 0 && extractedTotal <= subtotal)
+        ? Number((subtotal + iva).toFixed(2))
+        : extractedTotal;
+
+    return {
+        emisor: "CLOUD VENDING S.L.",
+        facturado_a: "CARLOS GOMEZ DE LA CASA",
+        fecha_emision: fecha,
+        referencia,
+        subtotal,
+        iva,
+        r_eq: 0.0,
+        total_impuestos: iva,
+        total
+    };
+};
+
+const extractEstancoPlusInvoice = (filePath, mimeType) => {
+    if (mimeType !== "application/pdf") return null;
+
+    const text = extractPdfText(filePath);
+    if (!text) return null;
+
+    const normalized = normalizeText(text);
+    if (!normalized.includes("estancoplus") && !normalized.includes("estanco plus")) return null;
+    if (!normalized.includes("b98986425")) return null;
+
+    const refMatch = text.match(/N[úu]mero\s+Factura\s*#?\s*([A-Z0-9/.-]+)/i)
+        || text.match(/Factura\s*#?\s*([A-Z0-9/.-]+)/i);
+    const dateMatch = text.match(/Fecha:\s*(\d{4})-(\d{2})-(\d{2})/i)
+        || text.match(/Fecha:\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+
+    const baseMatch = text.match(/Base\s+Imponible\s*\n\s*([\d.,]+)\s*€/i);
+    const taxesAndTotalMatch = text.match(/total\s+IVA\s*\n\s*([\d.,]+)\s*€\s*\n\s*Total\s*\n\s*([\d.,]+)\s*€/i);
+    const ivaMatch = text.match(/21\s*%\s*\n\s*([\d.,]+)\s*€/i);
+    const rEqMatch = text.match(/5[,.]20\s*%\s*\n\s*([\d.,]+)\s*€/i);
+    const productsMatch = text.match(/Productos\s*\n\s*([\d.,]+)\s*€/i);
+    const discountMatch = text.match(/Total\s+Descuentos\s*\n\s*(-?\s*[\d.,]+)\s*€/i)
+        || text.match(/Total\s+cupones\s*\n\s*(-?\s*[\d.,]+)\s*€/i);
+
+    const referencia = refMatch?.[1]?.replace(/^#/, "").trim();
+    const fecha_emision = dateMatch
+        ? (dateMatch[1].length === 4
+            ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`
+            : `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`)
+        : "";
+    const subtotal = parseEuroAmount(baseMatch?.[1]);
+    const iva = parseEuroAmount(ivaMatch?.[1]);
+    const r_eq = parseEuroAmount(rEqMatch?.[1]);
+    const total_impuestos = parseEuroAmount(taxesAndTotalMatch?.[1]) || Number((iva + r_eq).toFixed(2));
+    const total = parseEuroAmount(taxesAndTotalMatch?.[2]);
+
+    if (!referencia || !fecha_emision || !subtotal || !total) return null;
+
+    return {
+        emisor: "Estanco Plus S.L.",
+        facturado_a: "Carlos Gomez De La Casa",
+        fecha_emision,
+        referencia,
+        subtotal,
+        iva,
+        r_eq,
+        total_impuestos,
+        total,
+        base_productos: parseEuroAmount(productsMatch?.[1]),
+        total_descuentos: parseEuroAmount(discountMatch?.[1]),
+        local_rule: "estancoplus"
+    };
+};
+
+const extractLogistaInvoice = (filePath, mimeType) => {
+    if (mimeType !== "application/pdf") return null;
+
+    const text = extractPdfText(filePath);
+    if (!text) return null;
+
+    const normalized = normalizeText(text);
+    if (!normalized.includes("logista")) return null;
+
+    const parseDate = (raw) => {
+        const match = String(raw || "").match(/(\d{2})[\/.](\d{2})[\/.](\d{4})/);
+        return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+    };
+    const amountAfter = (labelRegex, source = text) => {
+        const match = source.match(labelRegex);
+        return match ? parseEuroAmount(match[1]) : 0.0;
+    };
+
+    const isRetail = normalized.includes("logista retail");
+    const emisor = isRetail ? "Logista Retail, S.A." : "LOGISTA, S.A.U.";
+
+    const referenceMatch = text.match(/N[ªº]\s*([0-9]{10}(?:-\d{5})?)/i)
+        || text.match(/N[ºo]\s*\n\s*HOJA[\s\S]{0,160}?\n\s*([0-9]{10})\s*\n\s*1\s+DE\s+1/i)
+        || text.match(/\b([0-9]{10}-\d{5})\b/)
+        || text.match(/\b([0-9]{10})\b/);
+    const referencia = referenceMatch?.[1]?.trim();
+    if (!referencia) return null;
+
+    const emissionSection = text.match(/FEC\.\s*EMISI[OÓ]N[\s\S]{0,180}?(\d{2}[\/.]\d{2}[\/.]\d{4})/i);
+    const fecha_emision = parseDate(emissionSection?.[1]) || parseDate(text.match(/\b\d{2}[\/.]\d{2}[\/.]\d{4}\b/)?.[0]);
+    if (!fecha_emision) return null;
+
+    if (isRetail) {
+        const retailSubtotalMatch = text.match(/TOTAL\s+SUMA\s+Y\s+SIGUE[\s\S]{0,160}?([\d.,]+)\s*\n\s*\n\s*DESCUENTOS\s+GLOBALES/i);
+        const retailTaxSumsMatch = text.match(/TOTAL\s+IMPUESTOS[\s\S]{0,700}?_{6,}\s*\n\s*([\d.,]+)\s*\n\s*([\d.,]+)\s*\n\s*TOTAL/i);
+        const retailTotalMatch = text.match(/Total\s+EUR\s*\n\s*([\d.,]+)/i)
+            || text.match(/TOTAL\s*\n\s*([\d.,]+)\s*\n\s*SERVICIO\s+POSTVENTA/i);
+        if (retailSubtotalMatch && retailTaxSumsMatch && retailTotalMatch) {
+            const subtotal = parseEuroAmount(retailSubtotalMatch[1]);
+            const iva = parseEuroAmount(retailTaxSumsMatch[1]);
+            const r_eq = parseEuroAmount(retailTaxSumsMatch[2]);
+            const total = parseEuroAmount(retailTotalMatch[1]);
+            return {
+                emisor,
+                facturado_a: "GOMEZ DE LA CASA, CARLOS",
+                fecha_emision,
+                referencia,
+                subtotal,
+                iva,
+                r_eq,
+                total_impuestos: Number((iva + r_eq).toFixed(2)),
+                total,
+                local_rule: "logista_retail"
+            };
+        }
+
+        const retailTotals = text.match(/TOTAL\s+IMPUESTOS\s*\n\s*([\d.,]+)[\s\S]{0,500}?_{6,}\s*\n\s*_{6,}\s*\n\s*([\d.,]+)\s*\n\s*([\d.,]+)\s*\n\s*TOTAL\s*\n\s*([\d.,]+)\s*\n\s*([\d.,]+)/i);
+        if (retailTotals) {
+            return {
+                emisor,
+                facturado_a: "GOMEZ DE LA CASA, CARLOS",
+                fecha_emision,
+                referencia,
+                subtotal: parseEuroAmount(retailTotals[1]),
+                iva: parseEuroAmount(retailTotals[2]),
+                r_eq: parseEuroAmount(retailTotals[3]),
+                total_impuestos: parseEuroAmount(retailTotals[4]),
+                total: parseEuroAmount(retailTotals[5]),
+                local_rule: "logista_retail"
+            };
+        }
+    }
+
+    const total = amountAfter(/LIQUIDO\s+EUROS\s*\n\s*([\d.,]+)/i)
+        || amountAfter(/TOTAL\s*\n\s*EUROS\s*\n\s*([\d.,]+)/i)
+        || amountAfter(/TOTAL\s*\n\s*([\d.,]+)\s*\n\s*IMPORTE/i)
+        || amountAfter(/Total\s+EUR\s*\n\s*([\d.,]+)/i);
+    if (!total) return null;
+
+    const subtotal = amountAfter(/BASE\s*\n\s*%IVA\s*\n\s*([\d.,]+)\s*\n\s*21[,.]00/i)
+        || amountAfter(/BASE\s+IMPONIBLE\s*\n\s*([\d.,]+)\b/i)
+        || amountAfter(/BASE\s+IMPONIBLE\s*\n\s*%IVA\s*\n\s*([\d.,]+)\s*\n\s*21[,.]00/i);
+    const total_impuestos = amountAfter(/TOTAL\s+IMPUESTOS\s*\n\s*([\d.,]+)/i);
+    const taxSummary = text.match(/BASE\s+IMPONIBLE[\s\S]{0,900}?TOTAL\s+(?:NETO|IMPUESTOS)/i)?.[0] || text;
+    const rEqRateMatch = taxSummary.match(/%R\.EQ\.\s*\n\s*(1[,.]75|5[,.]20)/i)
+        || taxSummary.match(/\b(1[,.]75|5[,.]20)\s*%\s*\n\s*[_\d.,-]*\s*\n\s*TOTAL\s+(?:IMPUESTOS|NETO)/i);
+    const rEqRate = rEqRateMatch ? parseFloat(rEqRateMatch[1].replace(",", ".")) : 0;
+    const rEqDirect = amountAfter(/%R\.EQ\.\s*\n\s*(?:1[,.]75|5[,.]20)[\s\S]{0,140}?IMPORTE\s*\n\s*([\d.,]+)/i, taxSummary)
+        || amountAfter(/%R\.EQ\.[\s\S]{0,80}?IMPORTE\s*\n\s*([\d.,]+)\s*\n\s*_{6,}/i, taxSummary);
+    const rEqCalculated = (!rEqDirect && subtotal && rEqRate) ? Number((subtotal * rEqRate / 100).toFixed(2)) : 0.0;
+    const ivaDirect = amountAfter(/%IVA\s*\n\s*21[,.]00[\s\S]{0,140}?IMPORTE\s*\n\s*([\d.,]+)/i, taxSummary)
+        || amountAfter(/BASE\s+IMPONIBLE[\s\S]{0,120}?IMPORTE\s*\n\s*([\d.,]+)\s*\n\s*[_\d.,-]+[\s\S]{0,180}?%IVA\s*\n\s*21[,.]00/i, taxSummary);
+    const r_eq = rEqDirect || rEqCalculated || 0.0;
+    const iva = (total_impuestos && r_eq ? Number((total_impuestos - r_eq).toFixed(2)) : 0.0)
+        || ivaDirect
+        || (subtotal ? Number((subtotal * 0.21).toFixed(2)) : 0.0)
+        || amountAfter(/BASE\s+IMPONIBLE[\s\S]{0,180}?%R\.EQ\.[\s\S]{0,80}?([\d.,]+)\s*\n\s*[_\d.,-]+\s*\n\s*[_\d.,-]+\s*\n\s*1[,.]75/i)
+        || amountAfter(/BASE\s+IMPONIBLE[\s\S]{0,80}?%IVA\s*\n\s*[\d.,]+\s*\n\s*21[,.]00[\s\S]{0,80}?%R\.EQ\.\s*\n\s*([\d.,]+)/i);
+
+    return {
+        emisor,
+        facturado_a: "GOMEZ DE LA CASA, CARLOS",
+        fecha_emision,
+        referencia,
+        subtotal,
+        iva,
+        r_eq,
+        total_impuestos: total_impuestos || Number((iva + r_eq).toFixed(2)),
+        total
+    };
+};
+
+
+const extractAldistaInvoice = (filePath, mimeType) => {
+    if (mimeType !== "application/pdf") return null;
+
+    const text = extractPdfText(filePath);
+    if (!text) return null;
+
+    const normalized = normalizeText(text);
+    if (!normalized.includes("aldista 2000")) return null;
+
+    const headerMatch = text.match(/FACTURA\s*\n\s*FECHA[\s\S]{0,80}?\n\s*([0-9]+-[0-9]+)\s*\n\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    const referencia = headerMatch?.[1];
+    const fecha_emision = headerMatch ? `${headerMatch[4]}-${headerMatch[3]}-${headerMatch[2]}` : "";
+
+    const subtotal = parseEuroAmount(text.match(/Bruto\s*\n\s*([\d.,]+)\s*€/i)?.[1])
+        || parseEuroAmount(text.match(/Base\s*\n\s*([\d.,]+)/i)?.[1]);
+    const iva = parseEuroAmount(text.match(/IVA\s*%\s*\n\s*21\s*\n\s*Impuesto\s*\n\s*([\d.,]+)\s*€/i)?.[1])
+        || parseEuroAmount(text.match(/Impuestos\s*\n\s*([\d.,]+)\s*€/i)?.[1]);
+    const r_eq = parseEuroAmount(text.match(/RE%\s*\n\s*Impuesto\s*\n\s*([\d.,]+)\s*€/i)?.[1])
+        || parseEuroAmount(text.match(/Retenci[oó]n\s*\n\s*[\d.,]+\s*€\s*\n\s*R\.E\s*\n\s*([\d.,]+)\s*€/i)?.[1]);
+    const total = parseEuroAmount(text.match(/Forma\s+pago\s*\n\s*([\d.,]+)\s*€/i)?.[1])
+        || parseEuroAmount(text.match(/pendiente\s+([\d.,]+)/i)?.[1]);
+
+    if (!referencia || !fecha_emision || !subtotal || !total) return null;
+
+    return {
+        emisor: "ALDISTA 2000, S.L.",
+        facturado_a: "GOMEZ DE LA CASA, CARLOS",
+        fecha_emision,
+        referencia,
+        subtotal,
+        iva,
+        r_eq,
+        total_impuestos: Number((iva + r_eq).toFixed(2)),
+        total,
+        local_rule: "aldista"
+    };
+};
+
+
+const extractIberdrolaInvoice = (filePath, mimeType) => {
+    if (mimeType !== "application/pdf") return null;
+
+    const text = extractPdfText(filePath);
+    if (!text) return null;
+
+    const normalized = normalizeText(text);
+    if (!normalized.includes("iberdrola clientes")) return null;
+    if (!normalized.includes("factura de") || !normalized.includes("electricidad")) return null;
+
+    const parseDate = (raw) => {
+        const monthMap = {
+            enero: "01", febrero: "02", marzo: "03", abril: "04", mayo: "05", junio: "06",
+            julio: "07", agosto: "08", septiembre: "09", setiembre: "09", octubre: "10", noviembre: "11", diciembre: "12"
+        };
+        const textValue = normalizeText(raw);
+        const longMatch = textValue.match(/(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})/i);
+        if (longMatch && monthMap[longMatch[2]]) {
+            return `${longMatch[3]}-${monthMap[longMatch[2]]}-${String(longMatch[1]).padStart(2, "0")}`;
+        }
+        const shortMatch = String(raw || "").match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/);
+        return shortMatch ? `${shortMatch[3]}-${String(shortMatch[2]).padStart(2, "0")}-${String(shortMatch[1]).padStart(2, "0")}` : "";
+    };
+
+    const summarySection = text.match(/RESUMEN\s+DE\s+FACTURA[\s\S]{0,1800}?ENERG[IÍ]A/i)?.[0] || text;
+    const referencia = summarySection.match(/\b(\d{14,})\b/)?.[1];
+    const fecha_emision = parseDate(summarySection.match(/(\d{1,2}\s+de\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+\s+de\s+\d{4})/i)?.[1])
+        || parseDate(text.match(/FECHA\s+DE\s+EMISI[OÓ]N:\s*\n\s*([^\n]+)/i)?.[1]);
+
+    // Iberdrola muestra varios totales parciales: TOTAL ENERGÍA, TOTAL SERVICIOS,
+    // etc. El importe de factura válido es "TOTAL IMPORTE FACTURA"; la base antes
+    // de IVA es "IMPORTE TOTAL".
+    const subtotal = parseEuroAmount(text.match(/IMPORTE\s+TOTAL\s*\n\s*([\d.,]+)\s*€/i)?.[1]);
+    const iva = parseEuroAmount(text.match(/IVA\s*\n\s*21\s*%\s*s\/[\s\S]{0,80}?\n\s*([\d.,]+)\s*€/i)?.[1])
+        || parseEuroAmount(text.match(/IVA[\s\S]{0,80}?([\d.,]+)\s*€\s*\n\s*TOTAL/i)?.[1]);
+    const total = parseEuroAmount(text.match(/TOTAL\s+IMPORTE\s+FACTURA\s*\n\s*([\d.,]+)\s*€/i)?.[1])
+        || parseEuroAmount(text.match(/TOTAL\s*\n\s*(?:FECHA\s+PREVISTA[\s\S]{0,80})?([\d.,]+)\s*€/i)?.[1]);
+
+    if (!referencia || !fecha_emision || !subtotal || !iva || !total) return null;
+
+    return {
+        emisor: "IBERDROLA CLIENTES, S.A.U.",
+        facturado_a: "CARLOS GOMEZ DE LA CASA",
+        fecha_emision,
+        referencia,
+        subtotal,
+        iva,
+        r_eq: 0.0,
+        total_impuestos: iva,
+        total,
+        local_rule: "iberdrola"
+    };
+};
+
+const validateInvoiceConsistency = (result) => {
+    if (!result || result.needs_review) return "";
+
+    const normalizedEmitter = normalizeText(result.emisor || "");
+    // Algunos proveedores tienen conceptos no representados como base+IVA+R.EQ.
+    // (premios, descuentos, líquido final, cupones). Esos se validan con reglas
+    // específicas para no generar falsos avisos.
+    if (normalizedEmitter.includes("logista") || result.local_rule === "estancoplus") return "";
+
+    const subtotal = Number(result.subtotal || 0);
+    const iva = Number(result.iva || 0);
+    const rEq = Number(result.r_eq || 0);
+    const total = Number(result.total || 0);
+    const expectedTotal = Number((subtotal + iva + rEq).toFixed(2));
+
+    if (subtotal > 0 && total > 0 && Math.abs(expectedTotal - total) > 0.05) {
+        return `Aviso: La factura no cuadra aritméticamente (base ${subtotal.toFixed(2)} + IVA ${iva.toFixed(2)} + R.EQ. ${rEq.toFixed(2)} = ${expectedTotal.toFixed(2)}, pero el total leído es ${total.toFixed(2)}). Revísala antes de darla por buena. `;
+    }
+
+    return "";
+};
+
+
+const getTodayISODate = () => new Date().toISOString().slice(0, 10);
+
+const buildPendingInvoiceData = (file) => ({
+    emisor: "PENDIENTE DE REVISAR",
+    facturado_a: "",
+    fecha_emision: getTodayISODate(),
+    referencia: `PENDIENTE-${Date.now()}-${String(file?.originalname || "factura").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 60)}`,
+    subtotal: 0.0,
+    iva: 0.0,
+    r_eq: 0.0,
+    total_impuestos: 0.0,
+    total: 0.0,
+    needs_review: true,
+    original_filename: file?.originalname || ""
+});
+
+const extractGenericTextPdfInvoice = (filePath, mimeType) => {
+    if (mimeType !== "application/pdf") return null;
+
+    const text = extractPdfText(filePath);
+    if (!text) return null;
+
+    const normalized = normalizeText(text);
+    if (!normalized.includes("factura") && !normalized.includes("invoice")) return null;
+
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const parseDate = (raw) => {
+        const match = String(raw || "").match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/);
+        if (!match) return "";
+        return `${match[3]}-${String(match[2]).padStart(2, "0")}-${String(match[1]).padStart(2, "0")}`;
+    };
+    const amountFromMatch = (regex) => {
+        const match = text.match(regex);
+        return match ? parseEuroAmount(match[1]) : 0.0;
+    };
+
+    const total = amountFromMatch(/TOTAL\s+IMPORTE\s+FACTURA\D{0,80}([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2})/i)
+        || amountFromMatch(/(?:TOTAL\s*(?:FACTURA|EUR|EUROS)?|IMPORTE\s+TOTAL|TOTAL\s+A\s+PAGAR)\D{0,80}([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2})/i);
+    if (!total) return null;
+
+    const fecha_emision = parseDate(text.match(/(?:fecha\s*(?:emisi[oó]n|factura)?|date)\D{0,60}(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i)?.[1])
+        || parseDate(text.match(/\b\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4}\b/)?.[0])
+        || getTodayISODate();
+
+    const ref = text.match(/(?:n[ºoª]?\s*(?:factura|invoice)?|factura\s*n[ºoª]?|referencia)\D{0,40}([A-Z0-9][A-Z0-9\/.\- ]{2,40})/i)?.[1]
+        ?.replace(/\s+/g, " ")
+        ?.trim();
+
+    const subtotal = amountFromMatch(/(?:base\s+imponible|subtotal|base)\D{0,60}([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2})/i);
+    const iva = amountFromMatch(/(?:iva|i\.v\.a\.)\D{0,60}([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2})/i);
+    const r_eq = amountFromMatch(/(?:r\.\s*eq\.?|recargo\s+de\s+equivalencia)\D{0,80}([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2})/i);
+
+    const emisor = lines.find(line => /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(line) && !/^factura\b/i.test(line) && !/^n[ºoª]/i.test(line)) || "PENDIENTE DE REVISAR";
+
+    return {
+        emisor: emisor.slice(0, 120),
+        facturado_a: "",
+        fecha_emision,
+        referencia: ref || `PDF-${Date.now()}`,
+        subtotal,
+        iva,
+        r_eq,
+        total_impuestos: Number((iva + r_eq).toFixed(2)),
+        total,
+        generic_extraction: true
+    };
+};
+
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 
@@ -339,6 +818,19 @@ app.post("/api/invoices/upload", upload.single("invoice"), async (req, res) => {
 
         console.log("[UPLOAD] Archivo recibido y guardado en:", req.file.path);
 
+        const isZipUpload = req.file.mimetype === "application/zip"
+            || req.file.mimetype === "application/x-zip-compressed"
+            || /\.zip$/i.test(req.file.originalname || "");
+        if (isZipUpload) {
+            if (req.file?.path && fs.existsSync(req.file.path)) {
+                try { fs.unlinkSync(req.file.path); } catch (cleanupError) { console.error("[UPLOAD] No se pudo borrar ZIP no admitido:", cleanupError); }
+            }
+            return res.status(400).json({
+                warning: true,
+                message: "El archivo ZIP no se ha guardado como factura. Sube el PDF de la factura para evitar entradas pendientes o duplicadas."
+            });
+        }
+
         const userFetch = await db.query("SELECT * FROM users WHERE id = $1", [req.user.id]);
         const userData = userFetch.rows[0];
 
@@ -346,39 +838,92 @@ app.post("/api/invoices/upload", upload.single("invoice"), async (req, res) => {
             return res.status(404).json({ error: "Usuario no encontrado" });
         }
 
-        // Para Gemini necesitamos leer el archivo
+        // Para el motor IA/OCR necesitamos leer el archivo
         const fileBase64 = fs.readFileSync(req.file.path).toString("base64");
 
         const fileData = [{
             data: fileBase64,
-            mimeType: req.file.mimetype
+            mimeType: req.file.mimetype,
+            filename: req.file.originalname
         }];
 
-        console.log("[UPLOAD] Enviando a Gemini AI...");
-        let result = await gemini.extractInvoiceData(fileData, userData.r_eq);
-        result = db.prepareInvoiceData(result, result);
-        console.log("[UPLOAD] Resultado IA recibido:", result.emisor, result.total);
-
-        // Validaciones de duplicados después de aplicar reglas de normalización.
-        const duplicateInvoice = await db.checkDuplicateInvoice(userData.id, result, result);
-        if (duplicateInvoice.invoice) {
-            const duplicateRefText = duplicateInvoice.invoice.reference || result.referencia;
-            return res.json({ 
-                warning: true, 
-                message: `La factura "${duplicateRefText}" ya existe en tu historial. No se ha guardado de nuevo para evitar duplicidad.`,
-                invoice: result
-            });
+        let result = extractMursheInvoice(req.file.path, req.file.mimetype);
+        if (result) {
+            console.log("[UPLOAD] Factura Murshe extraída por regla local:", result.referencia, result.total);
+        } else {
+            result = extractCloudVendingInvoice(req.file.path, req.file.mimetype);
+            if (result) {
+                console.log("[UPLOAD] Factura Cloud Vending extraída por regla local:", result.referencia, result.total);
+            } else {
+                result = extractEstancoPlusInvoice(req.file.path, req.file.mimetype);
+                if (result) {
+                    console.log("[UPLOAD] Factura EstancoPlus extraída por regla local:", result.referencia, result.total);
+                } else {
+                    result = extractLogistaInvoice(req.file.path, req.file.mimetype);
+                    if (result) {
+                        console.log("[UPLOAD] Factura Logista extraída por regla local:", result.referencia, result.total);
+                    } else {
+                        result = extractIberdrolaInvoice(req.file.path, req.file.mimetype);
+                        if (result) {
+                            console.log("[UPLOAD] Factura Iberdrola extraída por regla local:", result.referencia, result.total);
+                        } else {
+                            result = extractAldistaInvoice(req.file.path, req.file.mimetype);
+                            if (result) {
+                                console.log("[UPLOAD] Factura Aldista extraída por regla local:", result.referencia, result.total);
+                            } else {
+                                result = extractGenericTextPdfInvoice(req.file.path, req.file.mimetype);
+                                if (result) {
+                                    console.log("[UPLOAD] Factura extraída por regla genérica local:", result.referencia, result.total);
+                                } else {
+                                    console.log("[UPLOAD] Enviando a motor IA/OCR...");
+                                    try {
+                                        result = await invoiceAI.extractInvoiceData(fileData, userData.r_eq);
+                                        result = db.prepareInvoiceData(result, result);
+                                        console.log("[UPLOAD] Resultado IA recibido:", result.emisor, result.total);
+                                    } catch (aiError) {
+                                        console.error("[UPLOAD] IA/OCR no disponible; guardando factura pendiente de revisar:", aiError.message);
+                                        result = buildPendingInvoiceData(req.file);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        const duplicateAmount = await db.checkDuplicateAmountDate(userData.id, result.total, result.fecha_emision);
         let warningMessage = "";
-        if (duplicateAmount) {
-            warningMessage = "Aviso: Se ha detectado otra factura con el mismo importe y fecha. ";
-        }
+        if (result.needs_review) {
+            warningMessage = "La factura se ha guardado, pero el OCR/IA no pudo leer los datos. Queda como PENDIENTE DE REVISAR para completarla manualmente; no se ha perdido el archivo. ";
+        } else {
+            // Validaciones de duplicados después de aplicar reglas de normalización.
+            const duplicateInvoice = await db.checkDuplicateInvoice(userData.id, result, result);
+            if (duplicateInvoice.invoice) {
+                const duplicateRefText = duplicateInvoice.invoice.reference || result.referencia;
+                if (req.file?.path && fs.existsSync(req.file.path)) {
+                    try { fs.unlinkSync(req.file.path); } catch (cleanupError) { console.error("[UPLOAD] No se pudo borrar temporal duplicado:", cleanupError); }
+                }
+                return res.json({ 
+                    warning: true, 
+                    message: `La factura "${duplicateRefText}" ya existe en tu historial. No se ha guardado de nuevo para evitar duplicidad.`,
+                    invoice: result
+                });
+            }
 
-        // Alarma de Recargo de Equivalencia (R.EQ)
-        if (userData.r_eq && (!result.r_eq || parseFloat(result.r_eq) <= 0)) {
-            warningMessage += "¡Atención!: No se ha detectado Recargo de Equivalencia (R.EQ.) en esta factura. ";
+            const duplicateAmount = await db.checkDuplicateAmountDate(userData.id, result.total, result.fecha_emision);
+            if (duplicateAmount) {
+                warningMessage = "Aviso: Se ha detectado otra factura con el mismo importe y fecha. ";
+            }
+
+            warningMessage += validateInvoiceConsistency(result);
+
+            // Alarma de Recargo de Equivalencia (R.EQ). Solo avisamos como incidencia
+            // cuando el PDF muestra R.EQ. positivo pero el extractor lo ha dejado a cero;
+            // así evitamos falsos avisos en seguros, cuotas, bonificaciones a 0, etc.
+            const hasPositiveReqInPdf = pdfHasPositiveReq(req.file.path, req.file.mimetype);
+            if (userData.r_eq && hasPositiveReqInPdf && (!result.r_eq || parseFloat(result.r_eq) <= 0)) {
+                warningMessage += "¡Atención!: La factura parece tener Recargo de Equivalencia (R.EQ.), pero no se ha podido extraer el importe. Revísala antes de darla por buena. ";
+            }
         }
 
         // Procesar y guardar el archivo final (convirtiendo a PDF si es imagen)
@@ -402,7 +947,10 @@ app.post("/api/invoices/upload", upload.single("invoice"), async (req, res) => {
 
     } catch (error) {
         console.error("[UPLOAD] Error crítico:", error);
-        res.status(500).json({ error: "Error al procesar la factura con IA: " + error.message });
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+            try { fs.unlinkSync(req.file.path); } catch (cleanupError) { console.error("[UPLOAD] No se pudo borrar temporal:", cleanupError); }
+        }
+        res.status(500).json({ error: "Error al procesar la factura con IA/OCR: " + error.message });
     }
 });
 
